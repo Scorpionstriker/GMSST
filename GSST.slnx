@@ -1,8 +1,16 @@
 <Solution>
-  <Folder Name="/Core Scheduling Engine Layer/" />
-  <Folder Name="/Data Layer/" />
-  <Folder Name="/Extensibility Layer/" />
-  <Folder Name="/GSST UI Layer/" />
+  <Folder Name="/Core Scheduling Engine Layer/">
+    <File Path="CSEL_ReadmeFile.md" />
+  </Folder>
+  <Folder Name="/Data Layer/">
+    <File Path="DL_ReadmeFile.md" />
+  </Folder>
+  <Folder Name="/Extensibility Layer/">
+    <File Path="EL_ReadmeFile.md" />
+  </Folder>
+  <Folder Name="/GSST UI Layer/">
+    <File Path="GSST_UIL_ReadmeFile.md" />
+  </Folder>
   <Project Path="GSST.csproj">
     <Deploy Solution="Debug|*" />
   </Project>
