@@ -1,17 +1,38 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path=".gitignore" />
+  </Folder>
   <Folder Name="/Core Scheduling Engine Layer/">
     <File Path="CSEL_ReadmeFile.md" />
+    <Project Path="src/Scheduler.Domain/Scheduler.Domain.csproj" />
+    <Project Path="src/Scheduler.Application/Scheduler.Application.csproj" />
+    <Project Path="src/Scheduler.Engine/Scheduler.Engine.csproj" />
   </Folder>
   <Folder Name="/Data Layer/">
     <File Path="DL_ReadmeFile.md" />
+    <Project Path="src/Scheduler.Infrastructure/Scheduler.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/Extensibility Layer/">
     <File Path="EL_ReadmeFile.md" />
+    <Project Path="src/Scheduler.Extensibility/Scheduler.Extensibility.csproj" />
+    <Project Path="src/Scheduler.Modules.Security/Scheduler.Modules.Security.csproj" />
   </Folder>
   <Folder Name="/GSST UI Layer/">
     <File Path="GSST_UIL_ReadmeFile.md" />
+    <Project Path="src/Scheduler.Admin/Scheduler.Admin.csproj">
+      <Deploy Solution="Debug|*" />
+    </Project>
   </Folder>
-  <Project Path="GSST.csproj">
-    <Deploy Solution="Debug|*" />
-  </Project>
+  <Folder Name="/Demo Apps/">
+    <Project Path="demos/DemoApps.InventoryMonitor/DemoApps.InventoryMonitor.csproj" />
+    <Project Path="demos/DemoApps.MaintenanceAgent/DemoApps.MaintenanceAgent.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="tests/Scheduler.UnitTests/Scheduler.UnitTests.csproj" />
+    <Project Path="tests/Scheduler.IntegrationTests/Scheduler.IntegrationTests.csproj" />
+    <Project Path="tests/Scheduler.ArchitectureTests/Scheduler.ArchitectureTests.csproj" />
+  </Folder>
 </Solution>

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Innermost layer: entities, enumerations and domain rules. References nothing (Phase 4, Table 3.1). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Scheduler.Domain</RootNamespace>
+  </PropertyGroup>
+
+</Project>

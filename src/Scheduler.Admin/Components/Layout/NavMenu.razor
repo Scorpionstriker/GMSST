@@ -1,0 +1,73 @@
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">Generic System Scheduler</a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+@* Persistent menu (FR-54). Module entries come from ModuleCatalog, so removing a module removes its menu items (FR-41). *@
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="nav flex-column">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Dashboard
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="tasks">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Tasks
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="queue">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Queue
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="executions">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Execution History
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="errors">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Error Log
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="reports">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Reports
+            </NavLink>
+        </div>
+
+        @foreach (var item in ModuleCatalog.Modules.SelectMany(m => m.MenuItems))
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="@item.Route.TrimStart('/')">
+                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> @(item.Group is null ? item.Title : $"{item.Group}: {item.Title}")
+                </NavLink>
+            </div>
+        }
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="configuration">
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Configuration
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="modules">
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Modules
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="backup">
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Backup &amp; Restore
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="help">
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Help
+            </NavLink>
+        </div>
+    </nav>
+</div>

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- Demonstration app 1: a module loaded into the Admin application. Adds an Inventory menu and the
+       GenerateStockReport, LowStockCheck and WeeklySummary task types (FR-78).
+       References Extensibility only (Phase 4, Table 3.1). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>DemoApps.InventoryMonitor</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Scheduler.Extensibility\Scheduler.Extensibility.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,19 @@
+@page "/modules"
+
+<h1>Modules</h1>
+<p>Installed modules and the pages they add (FR-60).</p>
+
+<table class="table">
+    <thead>
+        <tr><th>Module</th><th>Pages</th></tr>
+    </thead>
+    <tbody>
+        @foreach (var module in ModuleCatalog.Modules)
+        {
+            <tr>
+                <td>@module.Name</td>
+                <td>@string.Join(", ", module.MenuItems.Select(i => i.Title))</td>
+            </tr>
+        }
+    </tbody>
+</table>

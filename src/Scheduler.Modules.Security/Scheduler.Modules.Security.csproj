@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- Login and Security module: local users, PBKDF2 password hashing, lockout, roles, Login and Users
+       pages. Plugged in through ISchedulerModule and removable. References Extensibility only
+       (Phase 4, Table 3.1). Razor class library so it can contribute pages to the Admin application. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Scheduler.Modules.Security</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Scheduler.Extensibility\Scheduler.Extensibility.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Scheduler.UnitTests" />
+  </ItemGroup>
+
+</Project>

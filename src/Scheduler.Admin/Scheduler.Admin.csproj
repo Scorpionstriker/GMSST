@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+    <!-- Admin application: .NET MAUI Blazor Hybrid desktop app and composition root. Runs on Windows and
+         macOS only (NFR-10); on Linux the scheduler runs headless, for example through the Maintenance Agent.
+         May reference every project (Phase 4, Table 3.1). -->
+    <PropertyGroup>
+        <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux'))">net10.0-maccatalyst</TargetFrameworks>
+        <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+
+        <OutputType>Exe</OutputType>
+        <RootNamespace>Scheduler.Admin</RootNamespace>
+        <UseMaui>true</UseMaui>
+        <SingleProject>true</SingleProject>
+        <!-- Disable MAUI CSS handling so Blazor can handle it -->
+        <EnableDefaultCssItems>false</EnableDefaultCssItems>
+        <MauiXamlInflator>SourceGen</MauiXamlInflator>
+
+        <!-- Display name -->
+        <ApplicationTitle>Generic System Scheduler</ApplicationTitle>
+
+        <!-- App Identifier -->
+        <ApplicationId>com.gsst.scheduler.admin</ApplicationId>
+
+        <!-- Versions -->
+        <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+        <ApplicationVersion>1</ApplicationVersion>
+
+        <!-- Unpackaged Windows app, see https://aka.ms/MauiTemplateUnpackaged -->
+        <WindowsPackageType>None</WindowsPackageType>
+
+        <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">17.0</SupportedOSPlatformVersion>
+        <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
+        <TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- App Icon -->
+        <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
+
+        <!-- Splash Screen -->
+        <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
+
+        <!-- Images -->
+        <MauiImage Include="Resources\Images\*" />
+        <MauiImage Update="Resources\Images\dotnet_bot.svg" BaseSize="168,208" />
+
+        <!-- Custom Fonts -->
+        <MauiFont Include="Resources\Fonts\*" />
+
+        <!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
+        <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Maui.Controls" />
+        <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Debug" />
+    </ItemGroup>
+
+    <ItemGroup Label="Scheduler core">
+        <ProjectReference Include="..\Scheduler.Domain\Scheduler.Domain.csproj" />
+        <ProjectReference Include="..\Scheduler.Extensibility\Scheduler.Extensibility.csproj" />
+        <ProjectReference Include="..\Scheduler.Application\Scheduler.Application.csproj" />
+        <ProjectReference Include="..\Scheduler.Infrastructure\Scheduler.Infrastructure.csproj" />
+        <ProjectReference Include="..\Scheduler.Engine\Scheduler.Engine.csproj" />
+    </ItemGroup>
+
+    <ItemGroup Label="Modules (removable: delete the reference and its line in ModuleCatalog.cs)">
+        <ProjectReference Include="..\Scheduler.Modules.Security\Scheduler.Modules.Security.csproj" />
+        <ProjectReference Include="..\..\demos\DemoApps.InventoryMonitor\DemoApps.InventoryMonitor.csproj" />
+    </ItemGroup>
+
+</Project>
