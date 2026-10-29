@@ -18,6 +18,8 @@ public sealed partial class NavigationTests
         ("/tasks/new", "src/Scheduler.Admin/Components/Pages/Tasks.razor", "href=\"tasks/new\""),
         ("/tasks/{TaskId:guid}", "src/Scheduler.Admin/Components/Pages/Tasks.razor", "href=\"tasks/@task.Id\""),
         ("/login", "src/Scheduler.Admin/Components/Layout/MainLayout.razor", "/login?returnUrl="),
+        ("/login/register", "src/Scheduler.Modules.Security/Pages/Login.razor", "href=\"login/register\""),
+        ("/login/forgot-password", "src/Scheduler.Modules.Security/Pages/Login.razor", "href=\"login/forgot-password\""),
         ("/not-found", "src/Scheduler.Admin/Components/Routes.razor", "NotFoundPage=\"typeof(Pages.NotFound)\"")
     ];
 

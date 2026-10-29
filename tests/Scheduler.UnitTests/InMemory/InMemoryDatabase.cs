@@ -613,6 +613,8 @@ public sealed class InMemoryUserAccountStore : IUserAccountStore
         LastLoginAtUtc = u.LastLoginAtUtc,
         IsActive = u.IsActive,
         CreatedAtUtc = u.CreatedAtUtc,
+        RecoveryCodeHash = u.RecoveryCodeHash,
+        RecoveryCodeSalt = u.RecoveryCodeSalt,
         Version = version
     };
 }

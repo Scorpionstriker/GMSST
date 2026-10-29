@@ -212,7 +212,7 @@ else
                 </div>
                 <div class="field">
                     <label for="start" class="@(_form.Type == ScheduleType.Once ? "required" : "")">@(_form.Type == ScheduleType.Once ? "Run at" : "Start")</label>
-                    <input id="start" type="datetime-local" step="1" @bind="_form.StartTime" @bind:after="() => ScheduleChanged(TaskFields.StartTime)" class="@Invalid(TaskFields.StartTime)" />
+                    <div class="date-input @(_form.StartTime is null ? "empty" : "")" data-placeholder="@(_form.Type == ScheduleType.Once ? "Choose a date and time" : "From now")"><input id="start" type="datetime-local" step="1" @bind="_form.StartTime" @bind:after="() => ScheduleChanged(TaskFields.StartTime)" class="@Invalid(TaskFields.StartTime)" /></div>
                     @* WP-8f: optional for cron and interval (empty means from now); a single run needs a future time. *@
                     @if (_form.Type != ScheduleType.Once)
                     {
@@ -228,7 +228,7 @@ else
                 {
                     <div class="field">
                         <label for="end">End</label>
-                        <input id="end" type="datetime-local" step="1" @bind="_form.EndTime" @bind:after="() => ScheduleChanged(TaskFields.EndTime)" class="@Invalid(TaskFields.EndTime)" />
+                        <div class="date-input @(_form.EndTime is null ? "empty" : "")" data-placeholder="No end"><input id="end" type="datetime-local" step="1" @bind="_form.EndTime" @bind:after="() => ScheduleChanged(TaskFields.EndTime)" class="@Invalid(TaskFields.EndTime)" /></div>
                         <span class="hint">Optional. No runs after this time.</span>
                         <FieldError Result="Shown" Field="@TaskFields.EndTime" />
                     </div>

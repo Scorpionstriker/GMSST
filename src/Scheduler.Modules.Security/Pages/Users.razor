@@ -20,6 +20,20 @@ else
     {
         <div class="banner banner-success" role="status">@_notice</div>
     }
+    @if (_newCode is not null)
+    {
+        <div class="banner banner-warning" role="status">
+            Give this recovery code to the user with their password. It is shown only now; they can create a new one on
+            the Change password page.
+        </div>
+        <p class="recovery-code" aria-label="Recovery code">@_newCode</p>
+    }
+    @if (_users.Any(IsWaiting))
+    {
+        <div class="banner banner-info">
+            Someone has registered. Select Edit, tick <strong>Active</strong> and Save to let them sign in.
+        </div>
+    }
 
     @if (_adding)
     {
@@ -116,7 +130,11 @@ else
                         <td>@user.Username @(user.Id == Session.UserId ? "(you)" : "")</td>
                         <td>@user.Role</td>
                         <td>
-                            @if (!user.IsActive)
+                            @if (IsWaiting(user))
+                            {
+                                <span class="badge badge-warning" title="Registered on the Login page. Activate the account to let them sign in.">Waiting for approval</span>
+                            }
+                            else if (!user.IsActive)
                             {
                                 <span class="badge badge-muted">Inactive</span>
                             }
@@ -153,6 +171,10 @@ else
     private bool _confirmDeactivate;
     private UserActionResult? _result;
     private string? _notice;
+    private string? _newCode;
+
+    // A registered account has never been active, so it has never signed in.
+    private static bool IsWaiting(UserAccount user) => !user.IsActive && user.LastLoginAtUtc is null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -189,6 +211,7 @@ else
         _confirmDeactivate = false;
         _result = null;
         _notice = null;
+        _newCode = null;
     }
 
     private async Task AddAsync()
@@ -197,8 +220,10 @@ else
         if (_result.Succeeded)
         {
             var name = _username.Trim();
+            var code = _result.RecoveryCode;
             Clear();
             _notice = $"User {name} was created.";
+            _newCode = code;
             await ReloadAsync();
         }
     }

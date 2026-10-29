@@ -111,6 +111,110 @@ public class InMemorySecurityTests
         Assert.True((await users.UpdateUserAsync(fresh.Id, UserRole.Administrator, true, fresh.Version)).Succeeded);
     }
 
+    [Fact]
+    public async Task RegisteredAccount_IsAnInactiveViewer_UntilAnAdministratorActivatesIt()
+    {
+        await using var host = await SignedInAdministratorAsync();
+        var users = host.Get<UserManagement>();
+        var auth = host.Get<IAuthenticationProvider>();
+        await auth.SignOutAsync();
+
+        var registered = await users.RegisterAsync("newcomer", Password, Password);
+        Assert.True(registered.Succeeded);
+        Assert.False(string.IsNullOrEmpty(registered.RecoveryCode));
+        Assert.False((await users.RegisterAsync("NEWCOMER", Password, Password)).Succeeded);
+        Assert.False((await auth.SignInAsync("newcomer", Password)).Succeeded);
+        var stored = await host.Users.FindByUsernameAsync("newcomer");
+        Assert.Equal(UserRole.Viewer, stored!.Role);
+        Assert.DoesNotContain(registered.RecoveryCode!, stored.RecoveryCodeHash);
+
+        Assert.True((await auth.SignInAsync("admin", Password)).Succeeded);
+        Assert.True((await users.UpdateUserAsync(stored.Id, UserRole.Viewer, true, stored.Version)).Succeeded);
+        Assert.True((await auth.SignInAsync("newcomer", Password)).Succeeded);
+        Assert.False(host.Get<ICurrentUser>().IsAdministrator);
+    }
+
+    [Fact]
+    public async Task Register_IsRefused_BeforeTheFirstAdministratorExists()
+    {
+        await using var host = CreateHost();
+        Assert.False((await host.Get<UserManagement>().RegisterAsync("early", Password, Password)).Succeeded);
+        Assert.True(await host.Get<UserManagement>().NeedsFirstAdministratorAsync());
+    }
+
+    [Fact]
+    public async Task ForgotPassword_WithTheRecoveryCode_SetsANewPassword_AndTheCodeWorksOnce()
+    {
+        await using var host = CreateHost();
+        var users = host.Get<UserManagement>();
+        var code = (await users.CreateFirstAdministratorAsync("admin", Password, Password)).RecoveryCode!;
+        const string NewPassword = "Brand new secret 8";
+
+        // Typed by hand: lower case and spaces instead of dashes are accepted.
+        var typed = code.Replace('-', ' ').ToLowerInvariant();
+        var recovered = await users.RecoverPasswordAsync("admin", typed, NewPassword, NewPassword);
+        Assert.True(recovered.Succeeded);
+        Assert.NotEqual(code, recovered.RecoveryCode);
+
+        var auth = host.Get<IAuthenticationProvider>();
+        Assert.False((await auth.SignInAsync("admin", Password)).Succeeded);
+        Assert.True((await auth.SignInAsync("admin", NewPassword)).Succeeded);
+        Assert.False((await users.RecoverPasswordAsync("admin", code, Password, Password)).Succeeded);
+        Assert.True((await users.RecoverPasswordAsync("admin", recovered.RecoveryCode!, Password, Password)).Succeeded);
+        Assert.Contains(host.Logger.Entries, e => e.Source == LogSources.Security && e.Properties?["action"] as string == "PasswordRecovered");
+    }
+
+    [Fact]
+    public async Task WrongRecoveryCodes_LockTheAccount_WithOneGenericMessage()
+    {
+        await using var host = CreateHost();
+        var users = host.Get<UserManagement>();
+        var code = (await users.CreateFirstAdministratorAsync("admin", Password, Password)).RecoveryCode!;
+
+        var unknown = await users.RecoverPasswordAsync("nobody", code, "New password 77", "New password 77");
+        Assert.Equal(UserManagement.RecoveryFailureMessage, unknown.Error);
+        for (var i = 0; i < 5; i++)
+        {
+            Assert.Equal(unknown.Error, (await users.RecoverPasswordAsync("admin", "AAAA-AAAA-AAAA-AAAA", "New password 77", "New password 77")).Error);
+        }
+
+        // Locked now: even the right code is refused, with the same message.
+        Assert.Equal(unknown.Error, (await users.RecoverPasswordAsync("admin", code, "New password 77", "New password 77")).Error);
+        Assert.Contains(host.Users.Audit, a => a is { UsernameAttempted: "admin", Reason: "RecoveryLockedOut" });
+        Assert.False((await host.Get<IAuthenticationProvider>().SignInAsync("admin", Password)).Succeeded);
+    }
+
+    [Fact]
+    public async Task NewRecoveryCode_ReplacesTheOldOne_AfterThePasswordIsEntered()
+    {
+        await using var host = await SignedInAdministratorAsync();
+        var users = host.Get<UserManagement>();
+        var first = (await users.CreateUserAsync("viewer4", Password, Password, UserRole.Viewer)).RecoveryCode!;
+        await host.Get<IAuthenticationProvider>().SignInAsync("viewer4", Password);
+
+        Assert.Equal("Current", (await users.CreateOwnRecoveryCodeAsync("wrong")).Field);
+        var second = (await users.CreateOwnRecoveryCodeAsync(Password)).RecoveryCode!;
+        Assert.True(await users.HasRecoveryCodeAsync());
+
+        Assert.False((await users.RecoverPasswordAsync("viewer4", first, "New password 77", "New password 77")).Succeeded);
+        Assert.True((await users.RecoverPasswordAsync("viewer4", second, "New password 77", "New password 77")).Succeeded);
+    }
+
+    [Theory]
+    [InlineData("k7qm 2xnb r9td hw4p", "K7QM2XNBR9TDHW4P")]
+    [InlineData(" K7QM-2XNB-R9TD-HW4P ", "K7QM2XNBR9TDHW4P")]
+    [InlineData(null, "")]
+    public void RecoveryCode_IsComparedWithoutCaseSpacesOrDashes(string? typed, string expected) =>
+        Assert.Equal(expected, RecoveryCode.Normalize(typed));
+
+    [Fact]
+    public void RecoveryCode_HasFourGroupsOfFourEasyToReadCharacters()
+    {
+        var code = RecoveryCode.Generate();
+        Assert.Matches("^[A-HJKMNP-Z2-9]{4}(-[A-HJKMNP-Z2-9]{4}){3}$", code);
+        Assert.NotEqual(code, RecoveryCode.Generate());
+    }
+
     private static InMemoryHost CreateHost() => new(services => new SecurityModule().Register(services));
 
     private static async Task<InMemoryHost> SignedInAdministratorAsync()

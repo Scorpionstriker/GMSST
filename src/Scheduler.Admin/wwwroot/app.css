@@ -212,6 +212,20 @@ textarea { resize: vertical; }
 textarea.code { font-family: var(--mono); font-size: .85rem; min-height: 140px; }
 .invalid, input.invalid, select.invalid, textarea.invalid { border-color: var(--danger); outline: 1px solid var(--danger); }
 .field-error { color: var(--danger); font-size: .85rem; }
+/* An empty date field shows a plain-language placeholder instead of the browser's yyyy/mm/dd --:-- mask, which
+   looked like a value. The mask comes back while the field has focus, so the date can still be typed. */
+.date-input { position: relative; display: flex; }
+.date-input input { flex: 1; }
+.date-input.empty input:not(:focus)::-webkit-datetime-edit { color: transparent; }
+.date-input.empty:not(:focus-within)::before {
+    content: attr(data-placeholder);
+    position: absolute;
+    left: calc(.6rem + 1px);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+}
 .hint { color: var(--muted); font-size: .8rem; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); column-gap: 1rem; }
 fieldset { border: 1px solid var(--border); border-radius: 8px; padding: .75rem 1rem .25rem; margin: 0 0 1rem; }
@@ -292,6 +306,19 @@ legend { font-weight: 600; padding: 0 .35rem; }
 .login-card { width: min(420px, 100%); }
 .login-card h1 { margin-bottom: 1rem; }
 .login-card form .btn { width: 100%; justify-content: center; }
+.login-card > .btn { width: 100%; justify-content: center; }
+.login-links { display: flex; justify-content: space-between; gap: 1rem; margin-top: .9rem; font-size: .9rem; }
+.recovery-code {
+    font-family: var(--mono);
+    font-size: 1.25rem;
+    letter-spacing: .08em;
+    text-align: center;
+    padding: .6rem;
+    margin: .75rem 0;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    user-select: all;
+}
 .startup-card { width: min(560px, 100%); }
 
 #blazor-error-ui {

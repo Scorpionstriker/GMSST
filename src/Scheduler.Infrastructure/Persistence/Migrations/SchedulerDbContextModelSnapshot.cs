@@ -67,6 +67,16 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("password_salt");
 
+                    b.Property<string>("RecoveryCodeHash")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("recovery_code_hash");
+
+                    b.Property<string>("RecoveryCodeSalt")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("recovery_code_salt");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(20)

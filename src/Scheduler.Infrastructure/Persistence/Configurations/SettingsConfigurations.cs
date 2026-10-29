@@ -60,6 +60,8 @@ internal sealed class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
         b.Property(x => x.FailedLoginCount).HasColumnName("failed_login_count").HasDefaultValue(0);
         b.Property(x => x.LockoutEndUtc).HasColumnName("lockout_end");
         b.Property(x => x.LastLoginAtUtc).HasColumnName("last_login_at");
+        b.Property(x => x.RecoveryCodeHash).HasColumnName("recovery_code_hash").HasMaxLength(256);
+        b.Property(x => x.RecoveryCodeSalt).HasColumnName("recovery_code_salt").HasMaxLength(64);
         b.Property(x => x.Version).IsRowVersion();
         b.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true).HasSentinel(true);
         b.Property(x => x.CreatedAtUtc).HasColumnName("created_at").HasDefaultValueSql("now()");

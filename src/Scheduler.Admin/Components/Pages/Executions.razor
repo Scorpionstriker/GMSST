@@ -53,8 +53,8 @@
             }
         </select>
     </div>
-    <div class="field"><label for="from">From</label><input id="from" type="datetime-local" @bind="_from" /></div>
-    <div class="field"><label for="to">To</label><input id="to" type="datetime-local" @bind="_to" /></div>
+    <div class="field"><label for="from">From</label><div class="date-input @(_from is null ? "empty" : "")" data-placeholder="Any time"><input id="from" type="datetime-local" @bind="_from" /></div></div>
+    <div class="field"><label for="to">To</label><div class="date-input @(_to is null ? "empty" : "")" data-placeholder="Up to now"><input id="to" type="datetime-local" @bind="_to" /></div></div>
     <button class="btn" type="submit">Apply</button>
 </form>
 

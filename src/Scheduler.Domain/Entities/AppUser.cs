@@ -39,6 +39,10 @@ public sealed class AppUser
     public bool IsActive { get; set; }
     public DateTime CreatedAtUtc { get; private set; }
 
+    /// <summary>The hashed one-time recovery code for "Forgot password", or null when the user has none.</summary>
+    public string? RecoveryCodeHash { get; set; }
+    public string? RecoveryCodeSalt { get; set; }
+
     /// <summary>PostgreSQL xmin, used for optimistic concurrency (WP-7, F-27).</summary>
     public uint Version { get; private set; }
     public DateTime? UpdatedAtUtc { get; set; }

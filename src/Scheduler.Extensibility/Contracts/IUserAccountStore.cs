@@ -36,6 +36,10 @@ public sealed class UserAccount
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAtUtc { get; set; }
 
+    /// <summary>The hashed one-time recovery code used by "Forgot password"; null when the user has none.</summary>
+    public string? RecoveryCodeHash { get; set; }
+    public string? RecoveryCodeSalt { get; set; }
+
     /// <summary>The row version when the account was read. An update fails with <see cref="UserAccountConflictException"/> if it changed since.</summary>
     public uint Version { get; init; }
 }

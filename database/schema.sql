@@ -630,3 +630,28 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM scheduler.__ef_migrations_history WHERE "MigrationId" = '20261029203823_AccountRecovery') THEN
+    ALTER TABLE scheduler.app_user ADD recovery_code_hash character varying(256);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM scheduler.__ef_migrations_history WHERE "MigrationId" = '20261029203823_AccountRecovery') THEN
+    ALTER TABLE scheduler.app_user ADD recovery_code_salt character varying(64);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM scheduler.__ef_migrations_history WHERE "MigrationId" = '20261029203823_AccountRecovery') THEN
+    INSERT INTO scheduler.__ef_migrations_history ("MigrationId", "ProductVersion")
+    VALUES ('20261029203823_AccountRecovery', '10.0.14');
+    END IF;
+END $EF$;
+COMMIT;
+

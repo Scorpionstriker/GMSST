@@ -46,7 +46,11 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
         var entity = new AppUser(user.Id, user.Username.Trim(), user.PasswordHash, user.PasswordSalt, user.Role, user.IsActive,
-            user.CreatedAtUtc == default ? DateTime.UtcNow : user.CreatedAtUtc);
+            user.CreatedAtUtc == default ? DateTime.UtcNow : user.CreatedAtUtc)
+        {
+            RecoveryCodeHash = user.RecoveryCodeHash,
+            RecoveryCodeSalt = user.RecoveryCodeSalt
+        };
         db.AppUsers.Add(entity);
         await Save(db, cancellationToken);
     }
@@ -69,6 +73,8 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
         entity.LockoutEndUtc = user.LockoutEndUtc;
         entity.LastLoginAtUtc = user.LastLoginAtUtc;
         entity.IsActive = user.IsActive;
+        entity.RecoveryCodeHash = user.RecoveryCodeHash;
+        entity.RecoveryCodeSalt = user.RecoveryCodeSalt;
         entity.UpdatedAtUtc = DateTime.UtcNow;
         await Save(db, cancellationToken);
     }
@@ -108,6 +114,8 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
         LastLoginAtUtc = user.LastLoginAtUtc,
         IsActive = user.IsActive,
         CreatedAtUtc = user.CreatedAtUtc,
+        RecoveryCodeHash = user.RecoveryCodeHash,
+        RecoveryCodeSalt = user.RecoveryCodeSalt,
         Version = user.Version
     };
 }

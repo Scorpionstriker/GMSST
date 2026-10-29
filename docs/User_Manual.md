@@ -11,6 +11,19 @@ confirmation). After that, sign in with your username and password. After `MaxFa
 password." so nobody can tell whether an account exists. You are signed out after `SessionTimeoutMinutes` without
 activity (default 20).
 
+**Recovery code.** Every account gets a recovery code such as `K7QM-2XNB-R9TD-HW4P` when it is created. It is shown
+only once, so write it down. The scheduler runs locally without email, so this code is how you prove who you are when
+you forget your password. It works once; each time you use it you get a new one. You can also create a new code on the
+Change password page, which makes the old one stop working.
+
+**Register.** Select **Register** on the sign-in page to ask for an account: choose a username and password and
+note the recovery code. The account is a Viewer and cannot sign in until an administrator activates it on the Users
+page.
+
+**Forgot password.** Select **Forgot password?**, then enter your username, your recovery code and a new password
+twice. Wrong codes count as failed sign-ins, so the same lockout applies, and the message never says which part was
+wrong. If you have no recovery code, ask an administrator to reset your password.
+
 | Role | Can do |
 |---|---|
 | Administrator | Everything: create, edit and delete tasks, run, pause and cancel, change configuration, back up and restore, manage users, change Inventory data |
@@ -157,9 +170,16 @@ Add users (**Add user**: username, role, password and confirmation), **Edit** a 
 **Deactivate** or reactivate an account, and see locked accounts with "Locked until …". Every change is recorded in
 the Security and audit report. You cannot deactivate or demote the last active administrator.
 
+Accounts registered on the sign-in page show **Waiting for approval**. Select **Edit**, tick **Active** and **Save**
+to let the person sign in; change the role to Administrator first if they need it. When you add a user, the page
+shows their recovery code once: give it to them with their password.
+
 ## 16. Change password
 
 Enter the current password and the new one twice. Passwords need at least 10 characters.
+
+Under **Recovery code**, enter your current password and select **Create a new recovery code** to get a new code for
+"Forgot password?". Accounts that existed before recovery codes were added have none until you create one here.
 
 ## 17. Common tasks
 

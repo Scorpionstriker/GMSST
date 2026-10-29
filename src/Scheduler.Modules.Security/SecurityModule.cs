@@ -16,7 +16,7 @@ public sealed class SecurityModule : ISchedulerModule
 
     public string Name => "Login and Security";
 
-    public string Description => "Local user accounts, sign-in with lockout, roles and session time-out.";
+    public string Description => "Local user accounts, sign-in with lockout, roles, session time-out, registration and password recovery.";
 
     public IReadOnlyList<ModuleMenuItem> MenuItems { get; } =
     [

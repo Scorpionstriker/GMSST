@@ -1,0 +1,11 @@
+@* Shows a new recovery code once. It is not stored in plain text, so this is the only time the user can see it. *@
+<div class="banner banner-warning" role="status">
+    <strong>Write down your recovery code and keep it somewhere safe.</strong>
+    You need it to set a new password if you forget yours. It is shown only now, and it works once; a new code is
+    given each time you use it.
+</div>
+<p class="recovery-code" aria-label="Recovery code">@Code</p>
+
+@code {
+    [Parameter, EditorRequired] public string Code { get; set; } = "";
+}
