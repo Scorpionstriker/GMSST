@@ -4,8 +4,10 @@
          macOS only (NFR-10); on Linux the scheduler runs headless, for example through the Maintenance Agent.
          May reference every project (Phase 4, Table 3.1). -->
     <PropertyGroup>
-        <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux'))">net10.0-maccatalyst</TargetFrameworks>
-        <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+        <!-- One target per operating system, so Visual Studio on Windows always runs the Windows app
+             (a Mac Catalyst build can only run on a Mac). -->
+        <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">net10.0-windows10.0.19041.0</TargetFrameworks>
+        <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('osx'))">net10.0-maccatalyst</TargetFrameworks>
 
         <OutputType>Exe</OutputType>
         <RootNamespace>Scheduler.Admin</RootNamespace>
