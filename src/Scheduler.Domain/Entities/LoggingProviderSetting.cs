@@ -24,6 +24,9 @@ public sealed class LoggingProviderSetting
     }
 
     public Guid Id { get; private set; } = Guid.CreateVersion7();
+
+    /// <summary>PostgreSQL xmin, used for optimistic concurrency (WP-7, F-27).</summary>
+    public uint Version { get; private set; }
     public string ProviderName { get; private set; }
     public LoggingProviderType ProviderType { get; private set; }
     public SchedulerLogLevel MinimumLevel { get; private set; }

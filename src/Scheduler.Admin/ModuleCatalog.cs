@@ -1,5 +1,6 @@
 using System.Reflection;
 using DemoApps.InventoryMonitor;
+using DemoApps.MaintenanceAgentConnector;
 using Scheduler.Extensibility.Contracts;
 using Scheduler.Modules.Security;
 
@@ -14,7 +15,8 @@ public static class ModuleCatalog
     public static readonly ISchedulerModule[] Modules =
     [
         new SecurityModule(),
-        new InventoryModule()
+        new InventoryModule(),
+        new MaintenanceAgentConnectorModule()
     ];
 
     /// <summary>Module assemblies searched by the router for pages.</summary>

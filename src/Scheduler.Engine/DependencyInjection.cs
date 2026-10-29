@@ -25,6 +25,7 @@ public static class DependencyInjection
         options ??= new EngineOptions();
         services.AddSingleton(options);
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IEngineInstanceLock, NoEngineInstanceLock>();
 
         services.AddSingleton<EngineSignal>();
         services.Replace(ServiceDescriptor.Singleton<IEngineSignal>(sp => sp.GetRequiredService<EngineSignal>()));
@@ -55,6 +56,7 @@ public static class DependencyInjection
             sp.GetRequiredService<ISchedulerLogger>(),
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<EngineOptions>(),
+            sp.GetRequiredService<IEngineInstanceLock>(),
             sp.GetRequiredService<ILogger<SchedulerEngine>>()));
         services.AddSingleton<IEngineControl>(sp => sp.GetRequiredService<SchedulerEngine>());
         services.AddSingleton<SchedulerHost>();
@@ -82,6 +84,7 @@ public static class DependencyInjection
             services.AddSingleton(module);
         }
 
-        return services;
+        // WP-4a: the developer login bypass applies to whichever current user the modules left registered.
+        return services.UseLoginBypass();
     }
 }

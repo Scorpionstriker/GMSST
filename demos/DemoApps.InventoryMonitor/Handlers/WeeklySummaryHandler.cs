@@ -28,7 +28,7 @@ public sealed class WeeklySummaryHandler(InventoryStore store) : ITaskHandler
             averageLowStock = reports.Count == 0 ? (double?)null : reports.Average(r => r.LowStockCount),
             currentValue = products.Sum(p => p.StockValue)
         };
-        await store.AddReportAsync(InventoryStore.ReportWeekly, products, summary, context.CancellationToken);
+        await store.AddReportAsync(InventoryStore.ReportWeekly, products, summary, context.ExecutionId, context.CancellationToken);
         context.Logger.LogInformation("Weekly summary written from {Reports} stock reports.", reports.Count);
         return TaskResult.Success($"Weekly summary of {reports.Count} stock reports.", summary);
     }

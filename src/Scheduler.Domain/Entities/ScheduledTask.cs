@@ -72,6 +72,18 @@ public sealed class ScheduledTask : AuditableEntity
 
     public int TimeoutSeconds { get; private set; }
 
+    /// <summary>
+    /// Stable key of a task the scheduler or a module creates itself, for example "builtin.database-backup" (WP-8h).
+    /// Such a task can be paused, edited and renamed, but not deleted. Null for tasks users create.
+    /// </summary>
+    public string? SystemKey { get; private set; }
+
+    public bool IsBuiltIn => SystemKey is not null;
+
+    public const int SystemKeyMaxLength = 100;
+
+    public void AssignSystemKey(string key) => SystemKey = key;
+
     public IReadOnlyCollection<Schedule> Schedules => _schedules;
     public IReadOnlyCollection<TaskDependency> Dependencies => _dependencies;
 

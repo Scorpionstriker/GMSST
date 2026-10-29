@@ -8,7 +8,8 @@ namespace DemoApps.InventoryMonitor;
 
 /// <summary>
 /// Demonstration app 1 (FR-78): a module loaded into the Admin application. It adds the Inventory menu, three task
-/// types, its own tables in the "demo" schema and its three scheduled tasks, using only the extensibility contracts.
+/// types, its own tables in the "inventory" schema of its own database inventory_demo, and its three scheduled tasks,
+/// using only the extensibility contracts (WP-1).
 /// </summary>
 public sealed class InventoryModule : ISchedulerModule
 {
@@ -31,7 +32,7 @@ public sealed class InventoryModule : ISchedulerModule
         services.AddTransient<ITaskHandler, WeeklySummaryHandler>();
     }
 
-    /// <summary>Creates the demo schema and sample data, and the module's tasks through the scheduler client (FR-42).</summary>
+    /// <summary>Creates the inventory schema and sample data, and the module's tasks through the scheduler client (FR-42).</summary>
     public async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
         var store = services.GetRequiredService<InventoryStore>();

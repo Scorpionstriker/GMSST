@@ -18,17 +18,22 @@ public class LayerDependencyTests
     private const string Admin = "Scheduler.Admin";
     private const string Inventory = "DemoApps.InventoryMonitor";
     private const string MaintenanceAgent = "DemoApps.MaintenanceAgent";
+    private const string Connector = "DemoApps.MaintenanceAgentConnector";
+
+    /// <summary>Every scheduler project; the Maintenance Agent is a separate application and may use none of them (WP-1).</summary>
+    private static readonly string[] SchedulerProjects = [Domain, Extensibility, Application, Infrastructure, Engine, Security, Admin, Inventory, Connector];
 
     public static TheoryData<string, string[]> ForbiddenDependencies => new()
     {
-        { Domain, [Extensibility, Application, Infrastructure, Engine, Security, Admin, Inventory, MaintenanceAgent] },
-        { Extensibility, [Application, Infrastructure, Engine, Security, Admin, Inventory, MaintenanceAgent] },
-        { Application, [Infrastructure, Engine, Security, Admin, Inventory, MaintenanceAgent] },
-        { Infrastructure, [Engine, Security, Admin, Inventory, MaintenanceAgent] },
-        { Engine, [Infrastructure, Security, Admin, Inventory, MaintenanceAgent] },
-        { Security, [Application, Infrastructure, Engine, Admin, Inventory, MaintenanceAgent] },
-        { Inventory, [Application, Infrastructure, Engine, Security, Admin, MaintenanceAgent] },
-        { MaintenanceAgent, [Security, Admin, Inventory] },
+        { Domain, [Extensibility, Application, Infrastructure, Engine, Security, Admin, Inventory, MaintenanceAgent, Connector] },
+        { Extensibility, [Application, Infrastructure, Engine, Security, Admin, Inventory, MaintenanceAgent, Connector] },
+        { Application, [Infrastructure, Engine, Security, Admin, Inventory, MaintenanceAgent, Connector] },
+        { Infrastructure, [Engine, Security, Admin, Inventory, MaintenanceAgent, Connector] },
+        { Engine, [Infrastructure, Security, Admin, Inventory, MaintenanceAgent, Connector] },
+        { Security, [Application, Infrastructure, Engine, Admin, Inventory, MaintenanceAgent, Connector] },
+        { Inventory, [Application, Infrastructure, Engine, Security, Admin, MaintenanceAgent, Connector] },
+        { Connector, [Application, Infrastructure, Engine, Security, Admin, Inventory, MaintenanceAgent] },
+        { MaintenanceAgent, SchedulerProjects },
     };
 
     [Theory]
@@ -53,7 +58,8 @@ public class LayerDependencyTests
     [InlineData(Engine, Application)]
     [InlineData(Security, Extensibility)]
     [InlineData(Inventory, Extensibility)]
-    [InlineData(MaintenanceAgent, Engine)]
+    [InlineData(Connector, Extensibility)]
+    [InlineData(MaintenanceAgent, "Npgsql")]
     public void Rule_DetectsAnExistingDependency(string project, string dependency)
     {
         var result = Types.InAssembly(Assembly.Load(project))
@@ -64,7 +70,10 @@ public class LayerDependencyTests
         Assert.False(result.IsSuccessful, $"{project} should use {dependency}; if this fails the dependency rules are not being checked.");
     }
 
-    /// <summary>Only the infrastructure layer talks to PostgreSQL; the other layers use its interfaces (Phase 4, Section 3.1).</summary>
+    /// <summary>
+    /// Only the infrastructure layer talks to PostgreSQL; the other layers use its interfaces (Phase 4, Section 3.1). The
+    /// Maintenance Agent is a separate application with its own database, so it is not part of this rule.
+    /// </summary>
     [Theory]
     [InlineData(Domain)]
     [InlineData(Extensibility)]
@@ -72,6 +81,7 @@ public class LayerDependencyTests
     [InlineData(Engine)]
     [InlineData(Security)]
     [InlineData(Inventory)]
+    [InlineData(Connector)]
     public void OnlyInfrastructure_UsesEntityFrameworkOrNpgsql(string project)
     {
         var result = Types.InAssembly(Assembly.Load(project))

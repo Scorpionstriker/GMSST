@@ -22,6 +22,11 @@ internal sealed class DeleteTaskHandler(IUnitOfWorkFactory unitOfWorkFactory, IC
             return Error.NotFound("Task");
         }
 
+        if (task.IsBuiltIn)
+        {
+            return Error.Conflict("Task.BuiltIn", $"'{task.Name}' is a built-in task and cannot be deleted. Pause or disable it instead.");
+        }
+
         task.Delete(clock.GetUtcNow().UtcDateTime, currentUser.UserId);
         foreach (var entry in await unitOfWork.Queue.GetWaitingForTaskAsync(task.Id, cancellationToken))
         {

@@ -32,6 +32,8 @@ internal sealed class ScheduledTaskConfiguration : IEntityTypeConfiguration<Sche
         b.Property(x => x.CreatedAtUtc).HasColumnName("created_at").HasDefaultValueSql("now()");
         b.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at");
 
+        b.Property(x => x.SystemKey).HasColumnName("system_key").HasMaxLength(ScheduledTask.SystemKeyMaxLength);
+        b.HasIndex(x => x.SystemKey).IsUnique().HasDatabaseName("ux_task_system_key").HasFilter("system_key IS NOT NULL");
         // Optimistic concurrency on PostgreSQL's xmin system column (Phase 4, Section 5.7).
         b.Property(x => x.Version).IsRowVersion();
 

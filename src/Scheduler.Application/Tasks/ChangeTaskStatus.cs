@@ -5,7 +5,10 @@ using Scheduler.Extensibility.Contracts;
 
 namespace Scheduler.Application.Tasks;
 
-/// <summary>Pauses, resumes or disables a task (FR-02, FR-03). Only Active tasks are scheduled.</summary>
+/// <summary>
+/// Pauses, resumes, disables or enables a task (FR-02, FR-03) following the state table of WP-6. Only Active tasks are
+/// scheduled; a paused task can still be run with Run now, a disabled task cannot.
+/// </summary>
 public sealed record ChangeTaskStatusCommand(Guid TaskId, ScheduledTaskStatus NewStatus) : IRequireAdministrator;
 
 internal sealed class ChangeTaskStatusHandler(IUnitOfWorkFactory unitOfWorkFactory, ICurrentUser currentUser, TimeProvider clock, IEngineSignal engine)
@@ -28,7 +31,7 @@ internal sealed class ChangeTaskStatusHandler(IUnitOfWorkFactory unitOfWorkFacto
         if (!task.CanChangeStatusTo(command.NewStatus))
         {
             return Error.Conflict("Task.InvalidStatusChange",
-                $"A {task.Status.ToString().ToLowerInvariant()} task cannot be set to {command.NewStatus.ToString().ToLowerInvariant()}. Resume it first.");
+                $"A {task.Status.ToString().ToLowerInvariant()} task cannot be set to {command.NewStatus.ToString().ToLowerInvariant()}. {(task.Status == ScheduledTaskStatus.Disabled ? "Enable" : "Resume")} it first.");
         }
 
         var now = clock.GetUtcNow().UtcDateTime;

@@ -1,0 +1,174 @@
+@using Scheduler.Application.Configuration
+@inject IQueryHandler<GetMachineSettingsQuery, MachineSettingsView> GetMachineSettings
+@inject ICommandHandler<UpdateMachineSettingsCommand, Unit> UpdateMachineSettings
+@inject IFolderPicker FolderPicker
+@inject ToastService Toasts
+
+@* WP-5a: settings of this computer, kept in the user settings file rather than the database, so a restored
+   backup never brings another computer's folders with it. Administrators only (the use cases check the role). *@
+<div class="card">
+    <h2>This computer</h2>
+    <ErrorBanner Result="_failed" FieldsShown="true" />
+    @if (_view is { } v)
+    {
+        <p class="hint">Saved in <span class="mono">@v.FilePath</span>. Leave a folder empty to use the default.</p>
+
+        <div class="field">
+            <label for="pg-bin">PostgreSQL tools folder (pg_dump and pg_restore)</label>
+            <div class="toolbar">
+                <input id="pg-bin" @bind="_form.PostgresBinFolder" placeholder="Found automatically" style="flex:1" />
+                @if (FolderPicker.IsSupported)
+                {
+                    <button class="btn" @onclick="() => BrowseAsync(f => _form.PostgresBinFolder = f)">Browse…</button>
+                }
+            </div>
+            @if (v.Tools.Found)
+            {
+                <span class="hint">In use: <span class="mono">@v.Tools.Folder</span></span>
+            }
+            else
+            {
+                <span class="field-error">@v.Tools.Error</span>
+            }
+            <FieldError Result="_saved" Field="PostgresBinFolder" />
+        </div>
+
+        <div class="field">
+            <label for="backup-folder">Backup folder</label>
+            <div class="toolbar">
+                <input id="backup-folder" @bind="_form.BackupFolder" placeholder="@v.EffectiveBackupFolder" style="flex:1" />
+                @if (FolderPicker.IsSupported)
+                {
+                    <button class="btn" @onclick="() => BrowseAsync(f => _form.BackupFolder = f)">Browse…</button>
+                }
+            </div>
+            <FieldError Result="_saved" Field="BackupFolder" />
+        </div>
+
+        <div class="field">
+            <label for="copy-folder">Backup copy folder</label>
+            <div class="toolbar">
+                <input id="copy-folder" @bind="_form.BackupCopyFolder" placeholder="No copies" style="flex:1" />
+                @if (FolderPicker.IsSupported)
+                {
+                    <button class="btn" @onclick="() => BrowseAsync(f => _form.BackupCopyFolder = f)">Browse…</button>
+                }
+            </div>
+            <span class="hint">Every verified backup set is copied here, for example to an external drive. A failed copy is a warning, not a failed backup.</span>
+            <FieldError Result="_saved" Field="BackupCopyFolder" />
+        </div>
+
+        <div class="field">
+            <label for="log-folder">Log file folder</label>
+            <div class="toolbar">
+                <input id="log-folder" @bind="_form.LogFolder" placeholder="@v.EffectiveLogFolder" style="flex:1" />
+                @if (FolderPicker.IsSupported)
+                {
+                    <button class="btn" @onclick="() => BrowseAsync(f => _form.LogFolder = f)">Browse…</button>
+                }
+            </div>
+            <FieldError Result="_saved" Field="LogFolder" />
+        </div>
+
+        <div class="field">
+            <label for="agent-url">Maintenance Agent address</label>
+            <input id="agent-url" @bind="_form.MaintenanceAgentUrl" placeholder="http://127.0.0.1:5087" />
+            <span class="hint">Applies after the Admin application restarts. If you change the port, also change the URLs of the two Maintenance tasks.</span>
+            <FieldError Result="_saved" Field="MaintenanceAgentUrl" />
+        </div>
+
+        <div class="field checkbox">
+            <label>
+                <input type="checkbox" @bind="_form.AllowLoginBypass" />
+                Allow login bypass (developer mode)
+            </label>
+            <span class="hint">
+                Only for development. When it is on and saved, the Admin application opens without signing in, as a local administrator,
+                and shows a red warning on every page. Changing it is recorded in the audit log.
+            </span>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">@(_saving ? "Saving…" : "Save")</button>
+        </div>
+    }
+</div>
+
+@code {
+    private MachineSettingsView? _view;
+    private Form _form = new();
+    private Result? _failed;
+    private Result? _saved;
+    private bool _saving;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var result = await GetMachineSettings.HandleAsync(new GetMachineSettingsQuery());
+        _failed = result.IsFailure ? result : null;
+        _view = result.Value;
+        if (_view is not null)
+        {
+            _form = Form.From(_view.Settings);
+        }
+    }
+
+    private async Task BrowseAsync(Action<string> set)
+    {
+        if (await FolderPicker.PickFolderAsync() is { } folder)
+        {
+            set(folder);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        try
+        {
+            var result = await UpdateMachineSettings.HandleAsync(new UpdateMachineSettingsCommand(_form.ToSettings()));
+            _saved = result.IsFailure ? result : null;
+            _failed = result.IsFailure ? result : null;
+            if (result.IsSuccess)
+            {
+                Toasts.Success("The settings of this computer are saved.");
+                await LoadAsync();
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private sealed class Form
+    {
+        public string PostgresBinFolder { get; set; } = "";
+        public string BackupFolder { get; set; } = "";
+        public string BackupCopyFolder { get; set; } = "";
+        public string LogFolder { get; set; } = "";
+        public string MaintenanceAgentUrl { get; set; } = "";
+        public bool AllowLoginBypass { get; set; }
+
+        public static Form From(MachineSettings s) => new()
+        {
+            PostgresBinFolder = s.PostgresBinFolder,
+            BackupFolder = s.BackupFolder,
+            BackupCopyFolder = s.BackupCopyFolder,
+            LogFolder = s.LogFolder,
+            MaintenanceAgentUrl = s.MaintenanceAgentUrl,
+            AllowLoginBypass = s.AllowLoginBypass
+        };
+
+        public MachineSettings ToSettings() => new()
+        {
+            PostgresBinFolder = PostgresBinFolder ?? "",
+            BackupFolder = BackupFolder ?? "",
+            BackupCopyFolder = BackupCopyFolder ?? "",
+            LogFolder = LogFolder ?? "",
+            MaintenanceAgentUrl = MaintenanceAgentUrl ?? "",
+            AllowLoginBypass = AllowLoginBypass
+        };
+    }
+}

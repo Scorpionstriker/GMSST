@@ -24,6 +24,7 @@ public sealed class QueueEntry
         EnqueuedAtUtc = nowUtc;
         Status = QueueStatus.Waiting;
         Attempt = attempt;
+        IsManualRun = triggerType == TriggerType.Manual;
     }
 
     /// <summary>Creates a Waiting entry. The task's priority is copied so the claim query needs no join.</summary>
@@ -49,6 +50,27 @@ public sealed class QueueEntry
 
     /// <summary>Retry attempt this entry represents; 0 for the first run (BR-08).</summary>
     public int Attempt { get; private set; }
+
+    /// <summary>True for a Run now entry and for the retries and re-queues that follow from it (WP-6).</summary>
+    public bool IsManualRun { get; private set; }
+
+    /// <summary>
+    /// A retry or re-queue of this entry. It keeps the schedule and whether the run was started manually, so the retries
+    /// of a manual run of a paused task still run (WP-6).
+    /// </summary>
+    public QueueEntry FollowUp(ScheduledTask task, TriggerType triggerType, DateTime scheduledTimeUtc, int attempt, DateTime nowUtc)
+    {
+        var next = Create(task, ScheduleId, triggerType, scheduledTimeUtc, attempt, nowUtc);
+        next.IsManualRun = IsManualRun;
+        return next;
+    }
+
+    /// <summary>
+    /// Only Active tasks run. A paused task runs only for a manual run and its retries; a disabled or deleted task never
+    /// runs (FR-02, FR-03, WP-6 state table).
+    /// </summary>
+    public bool MayRun(ScheduledTask task) =>
+        !task.IsDeleted && (task.Status == ScheduledTaskStatus.Active || (task.Status == ScheduledTaskStatus.Paused && IsManualRun));
 
     public void Cancel()
     {

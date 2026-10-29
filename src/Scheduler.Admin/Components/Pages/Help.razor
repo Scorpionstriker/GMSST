@@ -42,7 +42,30 @@
                 <h2>Statuses</h2>
                 <h3>Tasks</h3>
                 <p><StatusBadge Value="ScheduledTaskStatus.Active" /> runs on its schedule. <StatusBadge Value="ScheduledTaskStatus.Paused" /> does not run on
-                    its schedule but can be run manually. <StatusBadge Value="ScheduledTaskStatus.Disabled" /> does not run at all until it is resumed.</p>
+                    its schedule but can be run manually with <strong>Run now</strong>; that run keeps its retries. <StatusBadge Value="ScheduledTaskStatus.Disabled" />
+                    does not run at all, not even with Run now, until it is enabled.</p>
+                <table class="table">
+                    <thead><tr><th>From</th><th>Action</th><th>To</th><th>Effect on the queue and running work</th></tr></thead>
+                    <tbody>
+                        <tr><td>(new)</td><td>Create</td><td>Active</td><td>The next run is calculated.</td></tr>
+                        <tr><td>Active</td><td>Pause</td><td>Paused</td><td>No scheduled runs. Waiting runs are cancelled when a worker picks them up. A running run finishes.</td></tr>
+                        <tr><td>Paused</td><td>Resume</td><td>Active</td><td>The next run is recalculated and the misfire policy applies.</td></tr>
+                        <tr><td>Active or Paused</td><td>Disable</td><td>Disabled</td><td>Nothing runs and Run now is blocked. Waiting runs are cancelled. A running run finishes.</td></tr>
+                        <tr><td>Disabled</td><td>Enable</td><td>Active</td><td>As Resume.</td></tr>
+                        <tr><td>Any</td><td>Delete</td><td>(deleted)</td><td>Hidden from the list. Waiting runs are cancelled. The history is kept.</td></tr>
+                        <tr><td>Deleted</td><td>Restore</td><td>Previous status</td><td>As Resume.</td></tr>
+                        <tr><td>Paused</td><td>Run now</td><td>Stays Paused</td><td>One manual run is queued and executed, with its retries.</td></tr>
+                    </tbody>
+                </table>
+                <p>Only administrators can change a task's status.</p>
+                <h3>Priority and order</h3>
+                <p>Priority runs from 1 (highest) to 10 (lowest). When more runs are due than there are free workers, the run with the highest
+                    priority starts first; runs of equal priority start in order of their due time, then in the order they were queued.
+                    MaxConcurrency (1 to 16, default 4) is the number of runs that can execute at the same time.</p>
+                <h3>Runs after (dependencies)</h3>
+                <p>A task that runs after other tasks is queued once <strong>all</strong> of them have succeeded since its last dependency run.
+                    If one of them fails with no retries left, the task is not queued for that round; it waits until that task succeeds again.
+                    Only one dependency run of a task waits in the queue at a time.</p>
                 <h3>Runs</h3>
                 <p><StatusBadge Value="ExecutionStatus.Running" /> is in progress. <StatusBadge Value="ExecutionStatus.Success" /> finished.
                     <StatusBadge Value="ExecutionStatus.Retrying" /> failed and a retry is queued. <StatusBadge Value="ExecutionStatus.Failed" /> failed with no retries left.
@@ -66,7 +89,10 @@
                     </tbody>
                 </table>
                 <p><code>*</code> any value · <code>5,10</code> a list · <code>1-5</code> a range · <code>*/15</code> every 15th value.
-                    When both day fields are restricted, a day matching either one runs.</p>
+                    When both day fields are restricted, a day matching either one runs; a day field that starts with <code>*</code>
+                    (such as <code>*/2</code>) counts as unrestricted for this rule, so both fields must then match.</p>
+                <p>When the clocks go forward, a run time that does not exist that night (for example 02:30 when 02:00 becomes 03:00)
+                    runs at the first valid minute after the change. When the clocks go back, a repeated time runs once.</p>
                 <table class="table">
                     <thead><tr><th>Expression</th><th>Meaning</th></tr></thead>
                     <tbody>

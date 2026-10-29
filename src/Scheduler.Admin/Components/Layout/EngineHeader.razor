@@ -22,6 +22,11 @@
         <button class="btn btn-small" @onclick="SignOutAsync">Sign out</button>
     }
 </header>
+@if (Host.Engine.BlockedMessage is { } blocked)
+{
+    @* WP-1: a second engine on the same database stays stopped and says where the first one runs. *@
+    <div class="banner banner-warning no-print" role="alert">@blocked</div>
+}
 
 @code {
     private Timer? _refresh;

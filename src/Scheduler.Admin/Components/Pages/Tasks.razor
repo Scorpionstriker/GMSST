@@ -83,12 +83,22 @@
                         <tr>
                             <td>
                                 <a href="tasks/@task.Id">@task.Name</a>
+                                @if (task.IsBuiltIn)
+                                {
+                                    <StatusBadge Text="Built-in" Tone="muted" Title="@BuiltInHint" />
+                                }
                                 @if (!string.IsNullOrEmpty(task.Description))
                                 {
                                     <div class="hint">@task.Description</div>
                                 }
                             </td>
-                            <td class="mono">@task.TaskType</td>
+                            <td>
+                                <span class="mono">@task.TaskType</span>
+                                @if (!HasHandler(task.TaskType))
+                                {
+                                    <StatusBadge Text="No handler" Tone="danger" Title="@NoHandlerHint" />
+                                }
+                            </td>
                             <td>@ScheduleDescriber.Describe(task.ScheduleType, task.CronExpression, task.IntervalSeconds, task.TimeZoneId, task.StartTimeUtc)</td>
                             <td>
                                 @if (task.IsDeleted)
@@ -123,15 +133,26 @@
                                     {
                                         <button class="btn btn-small" disabled="@(task.Status == ScheduledTaskStatus.Disabled)" title="Queue a run now"
                                                 @onclick="() => RunNowAsync(task)">Run now</button>
+                                        @* WP-6 state table: Active -> Pause or Disable, Paused -> Resume or Disable, Disabled -> Enable. *@
                                         @if (task.Status == ScheduledTaskStatus.Active)
                                         {
                                             <button class="btn btn-small" @onclick="() => SetStatusAsync(task, ScheduledTaskStatus.Paused)">Pause</button>
                                         }
                                         else
                                         {
-                                            <button class="btn btn-small" @onclick="() => SetStatusAsync(task, ScheduledTaskStatus.Active)">Resume</button>
+                                            <button class="btn btn-small" @onclick="() => SetStatusAsync(task, ScheduledTaskStatus.Active)">
+                                                @(task.Status == ScheduledTaskStatus.Disabled ? "Enable" : "Resume")
+                                            </button>
                                         }
-                                        <button class="btn btn-small btn-danger" @onclick="() => _deleting = task">Delete</button>
+                                        @if (task.Status != ScheduledTaskStatus.Disabled)
+                                        {
+                                            <button class="btn btn-small" @onclick="() => SetStatusAsync(task, ScheduledTaskStatus.Disabled)">Disable</button>
+                                        }
+                                        @* WP-8h: built-in tasks can be paused, edited and renamed, but not deleted. *@
+                                        @if (!task.IsBuiltIn)
+                                        {
+                                            <button class="btn btn-small btn-danger" @onclick="() => _deleting = task">Delete</button>
+                                        }
                                     }
                                 }
                             </td>
@@ -157,6 +178,14 @@ else if (_failed is null)
     private PagedResult<TaskListItem>? _page;
     private Result? _failed;
     private IReadOnlyList<TaskTypeInfo> _types = [];
+
+    /// <summary>WP-1: a task whose type no installed module provides is never queued; the badge says why.</summary>
+    internal const string NoHandlerHint = "No installed module provides this task type, so it will not run.";
+
+    /// <summary>WP-8h: tasks the scheduler or a module created itself.</summary>
+    internal const string BuiltInHint = "Created by the scheduler or a module. It can be paused, edited and renamed, but not deleted.";
+
+    private bool HasHandler(string taskType) => _types.Any(t => t.TaskType == taskType);
     private string? _text;
     private ScheduledTaskStatus? _status;
     private string? _taskType;
@@ -191,7 +220,12 @@ else if (_failed is null)
 
     private async Task SetStatusAsync(TaskListItem task, ScheduledTaskStatus status) =>
         await Report(await ChangeStatus.HandleAsync(new ChangeTaskStatusCommand(task.Id, status)),
-            status == ScheduledTaskStatus.Paused ? $"'{task.Name}' is paused." : $"'{task.Name}' is active again.");
+            status switch
+            {
+                ScheduledTaskStatus.Paused => $"'{task.Name}' is paused.",
+                ScheduledTaskStatus.Disabled => $"'{task.Name}' is disabled.",
+                _ => $"'{task.Name}' is active again."
+            });
 
     private async Task DeleteAsync()
     {

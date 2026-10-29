@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Scheduler.Application.Backup;
 using Scheduler.Application.Common.Persistence;
 using Scheduler.Application.Cron;
 using Scheduler.Application.Tasks;
@@ -10,6 +11,13 @@ using Scheduler.Extensibility.Contracts;
 namespace Scheduler.Engine.Hosting;
 
 /// <summary>The start-up result of one module, shown on the Modules page (FR-60).</summary>
+/// <summary>Stable keys of the built-in tasks (WP-8h).</summary>
+public static class SystemKeys
+{
+    public const string DatabaseBackup = "builtin.database-backup";
+    public const string LogCleanup = "builtin.log-cleanup";
+}
+
 public sealed record ModuleStatus(string Name, string? Description, string Assembly, bool Initialized, string? Error);
 
 /// <summary>
@@ -72,9 +80,11 @@ public sealed class SchedulerHost(
         await client.EnsureTaskAsync(new TaskDefinition
         {
             Name = "Database Backup",
+            SystemKey = SystemKeys.DatabaseBackup,
             TaskType = DatabaseBackupHandler.Type,
-            Description = "Built-in daily backup of the scheduler database.",
+            Description = "Built-in daily backup of the scheduler, Inventory and Maintenance Agent databases.",
             CronExpression = "0 1 * * *",
+            Payload = System.Text.Json.JsonSerializer.Serialize(new { databases = services.GetService<IBackupService>()?.KnownDatabases ?? [] }),
             TimeZoneId = zone,
             MisfirePolicy = MisfirePolicy.RunOnce,
             TimeoutSeconds = 1800
@@ -82,8 +92,9 @@ public sealed class SchedulerHost(
         await client.EnsureTaskAsync(new TaskDefinition
         {
             Name = "Log Clean-up",
+            SystemKey = SystemKeys.LogCleanup,
             TaskType = LogCleanupHandler.Type,
-            Description = "Built-in daily removal of old executions, errors and log entries.",
+            Description = "Built-in daily removal of old executions, errors, log entries, log files and audit records.",
             CronExpression = "0 2 * * *",
             TimeZoneId = zone,
             MisfirePolicy = MisfirePolicy.RunOnce,

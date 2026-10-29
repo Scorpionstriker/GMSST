@@ -30,6 +30,7 @@
     <ProjectReference Include="..\..\src\Scheduler.Modules.Security\Scheduler.Modules.Security.csproj" />
     <ProjectReference Include="..\..\demos\DemoApps.InventoryMonitor\DemoApps.InventoryMonitor.csproj" />
     <ProjectReference Include="..\..\demos\DemoApps.MaintenanceAgent\DemoApps.MaintenanceAgent.csproj" />
+    <ProjectReference Include="..\..\demos\DemoApps.MaintenanceAgentConnector\DemoApps.MaintenanceAgentConnector.csproj" />
   </ItemGroup>
 
 </Project>

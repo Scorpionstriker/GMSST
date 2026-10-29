@@ -1,6 +1,6 @@
 @page "/users"
 @inject UserManagement Accounts
-@inject UserSession Session
+@inject ICurrentUser Session
 
 <div class="page-header">
     <h1>Users</h1>
@@ -122,7 +122,10 @@ else
                             }
                             else if (user.LockoutEndUtc > DateTime.UtcNow)
                             {
-                                <span class="badge badge-warning">Locked</span>
+                                @* WP-4b: sign-in only says "Invalid username or password.", so administrators see lockouts here. *@
+                                <span class="badge badge-warning" title="Locked after too many failed sign-ins. Saving the user as active, or resetting the password, unlocks it.">
+                                    Locked until @user.LockoutEndUtc?.ToLocalTime().ToString("t")
+                                </span>
                             }
                             else
                             {
@@ -215,7 +218,7 @@ else
     private async Task SaveAsync()
     {
         _confirmDeactivate = false;
-        _result = await Accounts.UpdateUserAsync(_editing!.Id, _role, _active);
+        _result = await Accounts.UpdateUserAsync(_editing!.Id, _role, _active, _editing.Version);
         if (_result.Succeeded)
         {
             var name = _editing.Username;
@@ -227,7 +230,7 @@ else
 
     private async Task ResetAsync()
     {
-        _result = await Accounts.ResetPasswordAsync(_editing!.Id, _password, _confirmation);
+        _result = await Accounts.ResetPasswordAsync(_editing!.Id, _password, _confirmation, _editing.Version);
         if (_result.Succeeded)
         {
             var name = _editing.Username;

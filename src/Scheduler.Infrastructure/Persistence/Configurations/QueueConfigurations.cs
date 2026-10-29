@@ -28,6 +28,7 @@ internal sealed class QueueEntryConfiguration : IEntityTypeConfiguration<QueueEn
         b.Property(x => x.ClaimedAtUtc).HasColumnName("claimed_at");
         b.Property(x => x.ClaimedUntilUtc).HasColumnName("claimed_until");
         b.Property(x => x.Attempt).HasColumnName("attempt").HasDefaultValue(0);
+        b.Property(x => x.IsManualRun).HasColumnName("is_manual_run").HasDefaultValue(false);
 
         b.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_task_queue_task");
         b.HasOne<Schedule>().WithMany().HasForeignKey(x => x.ScheduleId).OnDelete(DeleteBehavior.SetNull)
@@ -35,7 +36,7 @@ internal sealed class QueueEntryConfiguration : IEntityTypeConfiguration<QueueEn
         b.HasOne<WorkerThread>().WithMany().HasForeignKey(x => x.ClaimedBy).OnDelete(DeleteBehavior.SetNull)
             .HasConstraintName("fk_task_queue_worker");
 
-        b.HasIndex(x => new { x.Priority, x.ScheduledTimeUtc }).HasDatabaseName("ix_queue_claim").HasFilter("queue_status = 'Waiting'");
+        b.HasIndex(x => new { x.Priority, x.ScheduledTimeUtc, x.EnqueuedAtUtc }).HasDatabaseName("ix_queue_claim").HasFilter("queue_status = 'Waiting'");
         b.HasIndex(x => x.ClaimedUntilUtc).HasDatabaseName("ix_queue_lease").HasFilter("queue_status = 'Claimed'");
         b.HasIndex(x => x.TaskId).HasDatabaseName("ix_queue_task");
     }

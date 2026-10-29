@@ -78,10 +78,16 @@ public sealed class StartupState(SchedulerHost host, DatabaseConnection connecti
     private string Describe(Exception ex)
     {
         var options = connection.Options;
+        if (Find<DatabaseUpgradeBlockedException>(ex) is { } blocked)
+        {
+            // FR-73: shown as it is, with how to fix the usual cause.
+            return blocked.Message + " Check the PostgreSQL tools folder (Paths:PostgresBinFolder in the user settings file), then start again.";
+        }
+
         return Find<PostgresException>(ex) switch
         {
             { SqlState: "28P01" } => $"PostgreSQL rejected the password for user '{options.Username}'. Check {DatabaseOptions.PasswordVariable}.",
-            { SqlState: "3D000" } => $"The database '{options.Name}' does not exist. Create it with database/create_database.sql, then try again.",
+            { SqlState: "3D000" } => $"The database '{options.Name}' does not exist. Create it with database\\setup_windows.ps1 (or database/create_database.sql), then try again.",
             { SqlState: "28000" } => $"User '{options.Username}' is not allowed to connect to '{options.Name}'. Check the database permissions.",
             { } postgres => $"The database reported an error during start-up: {postgres.MessageText}",
             null when Find<SocketException>(ex) is not null || ex is NpgsqlException or TimeoutException =>

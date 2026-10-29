@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- The Admin application's side of demonstration app 2 (FR-79, WP-1): creates the two Local HTTP Request tasks
+       that manage the separate Maintenance Agent, adds the "Maintenance Agent" page under "Managed apps" and stops a
+       restore of maintenance_demo while the agent runs. References Extensibility only (Phase 4, Table 3.1). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>DemoApps.MaintenanceAgentConnector</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Scheduler.Extensibility\Scheduler.Extensibility.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Scheduler.UnitTests" />
+  </ItemGroup>
+
+</Project>

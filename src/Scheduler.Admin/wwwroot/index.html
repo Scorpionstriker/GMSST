@@ -22,7 +22,16 @@
     <script>
         // Used by the Reports page to print a report (FR-66).
         window.gmssPrint = () => window.print();
-        // Applies the light or dark theme chosen in the header (NFR-01).
+        // WP-8d: the printable part of the page with the app's styles, for platforms whose web view cannot print.
+        window.gmssPrintableHtml = () => {
+            const css = Array.from(document.styleSheets).map(sheet => {
+                try { return Array.from(sheet.cssRules).map(rule => rule.cssText).join('\n'); } catch { return ''; }
+            }).join('\n');
+            const main = document.querySelector('main.content');
+            return '<!doctype html><html><head><meta charset="utf-8"><title>' + document.title + '</title><style>' + css +
+                '</style></head><body class="print-copy"><main class="content">' + (main ? main.innerHTML : '') + '</main></body></html>';
+        };
+        // Applies the light or dark theme chosen in the header (FR-63).
         window.gmssSetTheme = theme => document.documentElement.setAttribute('data-theme', theme);
     </script>
 </body>

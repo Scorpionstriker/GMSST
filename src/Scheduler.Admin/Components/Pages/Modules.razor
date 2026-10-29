@@ -2,9 +2,10 @@
 @using Scheduler.Application.Tasks
 @inject SchedulerHost Host
 @inject IQueryHandler<GetTaskTypesQuery, IReadOnlyList<TaskTypeInfo>> GetTaskTypes
+@inject IEnumerable<ISchedulerModule> ModuleList
 
 <div class="page-header"><h1>Modules</h1></div>
-<p class="muted">The modules loaded into this application and the task types each one provides. To remove a module, take it out of
+<p class="muted">The modules loaded into this application, the pages they add and the task types each one provides. To remove a module, take it out of
     ModuleCatalog.cs and remove its project reference; see Help.</p>
 
 <div class="card">
@@ -16,12 +17,27 @@
     else
     {
         <table class="table">
-            <thead><tr><th>Module</th><th>Assembly</th><th>Status</th></tr></thead>
+            <thead><tr><th>Module</th><th>Pages</th><th>Assembly</th><th>Status</th></tr></thead>
             <tbody>
                 @foreach (var module in Host.Modules)
                 {
                     <tr>
                         <td><strong>@module.Name</strong><div class="hint">@module.Description</div></td>
+                        <td>
+                            @* WP-8b (F-18): the menu entries the module adds, with links. *@
+                            @{ var items = MenuItemsOf(module.Name); }
+                            @if (items.Count == 0)
+                            {
+                                <span class="muted">None</span>
+                            }
+                            @foreach (var item in items)
+                            {
+                                <div>
+                                    <a href="@item.Route.TrimStart('/')">@item.Title</a>
+                                    <span class="hint">@(item.Group ?? "Modules")@(item.AdministratorOnly ? " · administrators" : "")</span>
+                                </div>
+                            }
+                        </td>
                         <td class="mono">@module.Assembly</td>
                         <td>
                             @if (module.Initialized)
@@ -61,6 +77,9 @@
 
 @code {
     private IReadOnlyList<TaskTypeInfo> _types = [];
+
+    private IReadOnlyList<ModuleMenuItem> MenuItemsOf(string moduleName) =>
+        ModuleList.FirstOrDefault(m => m.Name == moduleName)?.MenuItems ?? [];
 
     protected override async Task OnInitializedAsync() =>
         _types = (await GetTaskTypes.HandleAsync(new GetTaskTypesQuery())).Value ?? [];

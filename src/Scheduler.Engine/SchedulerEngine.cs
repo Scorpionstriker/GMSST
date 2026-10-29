@@ -38,6 +38,7 @@ public sealed class SchedulerEngine : IEngineControl
     private readonly ISchedulerLogger _log;
     private readonly TimeProvider _clock;
     private readonly ILogger<SchedulerEngine> _logger;
+    private readonly IEngineInstanceLock _instanceLock;
     private readonly string _hostName;
 
     private readonly ConcurrentQueue<Guid> _idleWorkers = new();
@@ -46,10 +47,11 @@ public sealed class SchedulerEngine : IEngineControl
     private CancellationTokenSource? _loopStop;
     private Task? _loop;
     private volatile EngineState _state = EngineState.Stopped;
+    private volatile string? _blockedMessage;
 
     internal SchedulerEngine(IUnitOfWorkFactory unitOfWorkFactory, ISettingsProvider settings, ITaskTypeRegistry registry, TaskExecutor executor,
         FailureRecorder failures, EngineSignal signal, ISchedulerEventPublisher events, ISchedulerLogger log, TimeProvider clock,
-        EngineOptions options, ILogger<SchedulerEngine> logger)
+        EngineOptions options, IEngineInstanceLock instanceLock, ILogger<SchedulerEngine> logger)
     {
         _unitOfWorkFactory = unitOfWorkFactory;
         _settings = settings;
@@ -61,12 +63,19 @@ public sealed class SchedulerEngine : IEngineControl
         _log = log;
         _clock = clock;
         _logger = logger;
+        _instanceLock = instanceLock;
         _hostName = options.ResolveHostName();
     }
 
     public EngineState State => _state;
 
     public string HostName => _hostName;
+
+    /// <summary>
+    /// Set when another engine already runs on this database, so this one stays Stopped (WP-1). The Admin application
+    /// shows it as a banner; null when the engine holds the single-engine lock or has not tried to start.
+    /// </summary>
+    public string? BlockedMessage => _blockedMessage;
 
     /// <summary>Number of executions running in this host now.</summary>
     public int RunningCount => _running.Count;
@@ -89,6 +98,17 @@ public sealed class SchedulerEngine : IEngineControl
                 return;
             }
 
+            // Only one engine may run per database (WP-1); a second one stays Stopped and says who holds the lock.
+            var instance = await _instanceLock.TryAcquireAsync(_hostName, cancellationToken);
+            if (!instance.Acquired)
+            {
+                _blockedMessage = instance.BlockedMessage;
+                _events.Publish(new SchedulerEvent(SchedulerEventKind.EngineStateChanged, new EngineStateEventArgs(EngineState.Stopped)));
+                await _log.LogAsync(SchedulerLogLevel.Warning, LogSources.Engine, _blockedMessage, cancellationToken: cancellationToken);
+                return;
+            }
+
+            _blockedMessage = null;
             var settings = await _settings.GetEngineSettingsAsync(cancellationToken);
             await RegisterWorkersAsync(settings.MaxConcurrency, cancellationToken);
             await RecoverAsync(settings, cancellationToken);
@@ -137,6 +157,7 @@ public sealed class SchedulerEngine : IEngineControl
                 _logger.LogWarning(ex, "Workers of {Host} could not be marked as stopped.", _hostName);
             }
 
+            await _instanceLock.ReleaseAsync(CancellationToken.None);
             _idleWorkers.Clear();
             _loopStop?.Dispose();
             _loopStop = null;
@@ -192,6 +213,28 @@ public sealed class SchedulerEngine : IEngineControl
         }
     }
 
+    public async Task RefreshAfterRestoreAsync(CancellationToken cancellationToken = default)
+    {
+        await _lifecycle.WaitAsync(cancellationToken);
+        try
+        {
+            if (_state == EngineState.Stopped)
+            {
+                return;
+            }
+
+            // Paused, so nothing runs; the restored worker rows are replaced by this host's pool.
+            await RegisterWorkersAsync((await _settings.GetEngineSettingsAsync(cancellationToken)).MaxConcurrency, cancellationToken);
+            await _instanceLock.HeartbeatAsync(cancellationToken);
+            await _log.LogAsync(SchedulerLogLevel.Info, LogSources.Engine, $"Workers of {_hostName} were registered again after a restore.",
+                cancellationToken: cancellationToken);
+        }
+        finally
+        {
+            _lifecycle.Release();
+        }
+    }
+
     private async Task LoopAsync(CancellationToken stop)
     {
         while (!stop.IsCancellationRequested)
@@ -229,13 +272,27 @@ public sealed class SchedulerEngine : IEngineControl
     internal async Task<TimeSpan> RunCycleAsync(CancellationToken stop)
     {
         var settings = await _settings.GetEngineSettingsAsync(stop);
+        var maxSleep = TimeSpan.FromSeconds(Math.Min(settings.MaxPollIntervalSeconds, Math.Max(10, settings.WorkerStaleSeconds / 3)));
+        if (!await HoldsInstanceLockAsync(stop))
+        {
+            return maxSleep;
+        }
+
         await using (var unitOfWork = _unitOfWorkFactory.Create())
         {
+            // Safety net (WP-1): idle workers of this host that something marked Stopped are set back to Idle.
+            var idle = _idleWorkers.ToArray();
+            if (idle.Length > 0 && await unitOfWork.Workers.ReviveStoppedAsync(_hostName, idle, Now, stop) is var revived and > 0)
+            {
+                await _log.LogAsync(SchedulerLogLevel.Warning, LogSources.Engine,
+                    $"{revived} worker{(revived == 1 ? " was" : "s were")} marked as stopped while the engine was running and have been restarted.",
+                    cancellationToken: stop);
+            }
+
             await unitOfWork.Workers.HeartbeatAsync(_hostName, Now, stop);
         }
 
         await RecoverAsync(settings, stop);
-        var maxSleep = TimeSpan.FromSeconds(Math.Min(settings.MaxPollIntervalSeconds, Math.Max(10, settings.WorkerStaleSeconds / 3)));
         if (_state != EngineState.Running)
         {
             return maxSleep;
@@ -244,6 +301,32 @@ public sealed class SchedulerEngine : IEngineControl
         await EnqueueDueAsync(settings, stop);
         await DispatchAsync(settings, stop);
         return await NextDelayAsync(maxSleep, stop);
+    }
+
+    /// <summary>
+    /// Heartbeats the single-engine lock. When its connection was lost (for example while the database restarted),
+    /// takes the lock again; if another engine took it meanwhile, this engine does no work until it gets it back.
+    /// </summary>
+    private async Task<bool> HoldsInstanceLockAsync(CancellationToken stop)
+    {
+        if (await _instanceLock.HeartbeatAsync(stop))
+        {
+            return true;
+        }
+
+        var instance = await _instanceLock.TryAcquireAsync(_hostName, stop);
+        var message = instance.Acquired ? null : instance.BlockedMessage;
+        if (message != _blockedMessage)
+        {
+            _blockedMessage = message;
+            _events.Publish(new SchedulerEvent(SchedulerEventKind.EngineStateChanged, new EngineStateEventArgs(_state)));
+            if (message is not null)
+            {
+                await _log.LogAsync(SchedulerLogLevel.Warning, LogSources.Engine, message, cancellationToken: stop);
+            }
+        }
+
+        return instance.Acquired;
     }
 
     private async Task RegisterWorkersAsync(int count, CancellationToken cancellationToken)
@@ -284,7 +367,7 @@ public sealed class SchedulerEngine : IEngineControl
     {
         var now = Now;
         await using var unitOfWork = _unitOfWorkFactory.Create();
-        await unitOfWork.Workers.MarkStaleAsStoppedAsync(now.AddSeconds(-settings.WorkerStaleSeconds), now, cancellationToken);
+        await unitOfWork.Workers.MarkStaleAsStoppedAsync(now.AddSeconds(-settings.WorkerStaleSeconds), now, _hostName, cancellationToken);
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
         var expired = await unitOfWork.Queue.LockExpiredLeasesAsync(now, BatchSize, cancellationToken);
@@ -321,7 +404,7 @@ public sealed class SchedulerEngine : IEngineControl
 
     /// <summary>
     /// Algorithm 6.3: queues the runs of due schedules, applying each schedule's misfire policy, and moves the
-    /// schedules on. Schedules are locked with SKIP LOCKED, so two hosts never queue the same run.
+    /// schedules on. Only tasks with an installed handler are queued (WP-1); the others keep their next run time.
     /// </summary>
     private async Task EnqueueDueAsync(EngineSettings settings, CancellationToken cancellationToken)
     {
@@ -330,7 +413,7 @@ public sealed class SchedulerEngine : IEngineControl
         {
             await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
             var now = Now;
-            var due = await unitOfWork.Tasks.LockDueSchedulesAsync(now, BatchSize, cancellationToken);
+            var due = await unitOfWork.Tasks.LockDueSchedulesAsync(now, BatchSize, _registry.TaskTypeNames, cancellationToken);
             if (due.Count == 0)
             {
                 return;
@@ -450,7 +533,7 @@ public sealed class SchedulerEngine : IEngineControl
         var next = now + maxSleep;
         await using var unitOfWork = _unitOfWorkFactory.Create();
 
-        if (await unitOfWork.Tasks.GetEarliestNextRunAsync(cancellationToken) is { } nextRun && nextRun < next)
+        if (await unitOfWork.Tasks.GetEarliestNextRunAsync(_registry.TaskTypeNames, cancellationToken) is { } nextRun && nextRun < next)
         {
             next = nextRun;
         }

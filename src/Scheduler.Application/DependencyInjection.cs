@@ -23,6 +23,8 @@ public static class DependencyInjection
         services.TryAddSingleton<ISchedulerEventPublisher, NullEventPublisher>();
         services.TryAddSingleton<ITaskTypeRegistry, TaskTypeRegistry>();
         services.TryAddSingleton<ISchedulerClient, SchedulerClient>();
+        services.TryAddSingleton<ILoginBypass, NoLoginBypass>();
+        services.TryAddSingleton<IAuditLog, SecurityAuditLog>();
 
         var assembly = typeof(DependencyInjection).Assembly;
         foreach (var type in ConcreteTypes(assembly))

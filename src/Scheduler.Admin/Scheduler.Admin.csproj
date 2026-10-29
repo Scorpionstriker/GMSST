@@ -58,6 +58,7 @@
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
     </ItemGroup>
 
@@ -79,6 +80,7 @@
     <ItemGroup Label="Modules (removable: delete the reference and its line in ModuleCatalog.cs)">
         <ProjectReference Include="..\Scheduler.Modules.Security\Scheduler.Modules.Security.csproj" />
         <ProjectReference Include="..\..\demos\DemoApps.InventoryMonitor\DemoApps.InventoryMonitor.csproj" />
+        <ProjectReference Include="..\..\demos\DemoApps.MaintenanceAgentConnector\DemoApps.MaintenanceAgentConnector.csproj" />
     </ItemGroup>
 
 </Project>

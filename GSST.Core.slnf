@@ -10,8 +10,8 @@
       "src\\Scheduler.Modules.Security\\Scheduler.Modules.Security.csproj",
       "demos\\DemoApps.InventoryMonitor\\DemoApps.InventoryMonitor.csproj",
       "demos\\DemoApps.MaintenanceAgent\\DemoApps.MaintenanceAgent.csproj",
+      "demos\\DemoApps.MaintenanceAgentConnector\\DemoApps.MaintenanceAgentConnector.csproj",
       "tests\\Scheduler.UnitTests\\Scheduler.UnitTests.csproj",
-      "tests\\Scheduler.IntegrationTests\\Scheduler.IntegrationTests.csproj",
       "tests\\Scheduler.ArchitectureTests\\Scheduler.ArchitectureTests.csproj"
     ]
   }

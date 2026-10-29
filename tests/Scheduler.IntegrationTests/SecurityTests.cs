@@ -32,9 +32,10 @@ public sealed class SecurityTests(TestDatabase database) : IClassFixture<TestDat
             await auth.SignInAsync("viewer1", "wrong password 1");
         }
 
+        // WP-4b: a locked account gets the same message as a wrong password.
         var locked = await auth.SignInAsync("viewer1", Password);
         Assert.False(locked.Succeeded);
-        Assert.StartsWith("Account locked", locked.Message);
+        Assert.Equal(LocalAuthenticationProvider.GenericFailureMessage, locked.Message);
 
         await using var db = database.CreateContext();
         var audits = await db.LoginAudits.Where(a => a.UsernameAttempted == "viewer1").ToListAsync();
@@ -70,6 +71,55 @@ public sealed class SecurityTests(TestDatabase database) : IClassFixture<TestDat
         Assert.False((await users.CreateUserAsync("viewer3", Password, Password, UserRole.Viewer)).Succeeded);
         Assert.False((await users.ChangeOwnPasswordAsync("wrong", "New password 77", "New password 77")).Succeeded);
         Assert.True((await users.ChangeOwnPasswordAsync(Password, "New password 77", "New password 77")).Succeeded);
+    }
+
+    [SkippableFact]
+    public async Task UserChanges_AreAudited_AndShownInTheSecurityReport()
+    {
+        RequiresDatabase.Check();
+        var services = CreateServices();
+        await EnsureAdministratorAsync(services);
+        await SignInAsAdministratorAsync(services);
+        var users = services.GetRequiredService<UserManagement>();
+        Assert.True((await users.CreateUserAsync("audited", Password, Password, UserRole.Viewer)).Succeeded);
+        var created = (await users.ListAsync()).Single(u => u.Username == "audited");
+        Assert.True((await users.UpdateUserAsync(created.Id, UserRole.Administrator, false)).Succeeded);
+        Assert.True((await users.ResetPasswordAsync(created.Id, "Another password 9", "Another password 9")).Succeeded);
+
+        var report = await services.GetRequiredService<Scheduler.Application.Common.IQueryHandler<Scheduler.Application.Reports.GenerateReportQuery, Scheduler.Application.Reports.ReportResult>>()
+            .HandleAsync(new Scheduler.Application.Reports.GenerateReportQuery(Scheduler.Application.Reports.ReportType.SecurityAudit, DateTime.UtcNow.AddHours(-1), DateTime.UtcNow.AddHours(1), null, null));
+        var events = report.Value!.Rows.Where(r => r[1] == "admin" && r[3]?.Contains("'audited'") == true).Select(r => r[2]).ToList();
+        Assert.Contains("UserCreated", events);
+        Assert.Contains("RoleChanged", events);
+        Assert.Contains("UserDeactivated", events);
+        Assert.Contains("PasswordReset", events);
+
+        await using var db = database.CreateContext();
+        Assert.DoesNotContain(await db.ExecutionLogs.Where(l => l.Source == "Security").Select(l => l.Message).ToListAsync(),
+            m => m.Contains("Another password 9") || m.Contains(Password));
+    }
+
+    [SkippableFact]
+    public async Task EditingAUserThatChangedSinceItWasOpened_IsRefused()
+    {
+        RequiresDatabase.Check();
+        var services = CreateServices();
+        await EnsureAdministratorAsync(services);
+        await SignInAsAdministratorAsync(services);
+        var users = services.GetRequiredService<UserManagement>();
+        await users.CreateUserAsync("stale", Password, Password, UserRole.Viewer);
+        var opened = (await users.ListAsync()).Single(u => u.Username == "stale");
+
+        // Someone else changes the account (here: a failed sign-in) after the page was opened.
+        await services.GetRequiredService<IAuthenticationProvider>().SignInAsync("stale", "wrong password 1");
+        await SignInAsAdministratorAsync(services);
+
+        var result = await users.UpdateUserAsync(opened.Id, UserRole.Administrator, true, opened.Version);
+        Assert.False(result.Succeeded);
+        Assert.StartsWith("Someone else changed this user", result.Error);
+
+        var fresh = (await users.ListAsync()).Single(u => u.Username == "stale");
+        Assert.True((await users.UpdateUserAsync(fresh.Id, UserRole.Administrator, true, fresh.Version)).Succeeded);
     }
 
     private ServiceProvider CreateServices() =>

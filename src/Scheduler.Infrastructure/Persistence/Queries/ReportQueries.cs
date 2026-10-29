@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Scheduler.Application.Common;
 using Scheduler.Application.Reports;
 using Scheduler.Domain.Entities;
 using Scheduler.Domain.Enums;
@@ -144,10 +145,47 @@ internal sealed class ReportQueries(IDbContextFactory<SchedulerDbContext> contex
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
         return await db.LoginAudits.AsNoTracking()
             .Where(a => a.AttemptedAtUtc >= filter.FromUtc && a.AttemptedAtUtc < filter.ToUtc)
+            .Where(a => filter.Succeeded == null || a.Succeeded == filter.Succeeded)
             .OrderByDescending(a => a.AttemptedAtUtc)
             .Take(maxRows)
             .Select(a => new LoginAuditRow(a.AttemptedAtUtc, a.UsernameAttempted, a.Succeeded, a.Reason))
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<SecurityEventRow>> GetSecurityEventsAsync(ReportFilter filter, int maxRows, CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entries = await db.ExecutionLogs.AsNoTracking()
+            .Where(l => l.Source == LogSources.Security && l.LoggedAtUtc >= filter.FromUtc && l.LoggedAtUtc < filter.ToUtc)
+            .OrderByDescending(l => l.LoggedAtUtc)
+            .Take(maxRows)
+            .Select(l => new { l.LoggedAtUtc, l.Message })
+            .ToListAsync(cancellationToken);
+        return entries.Select(e => SecurityEvent(e.LoggedAtUtc, e.Message)).ToList();
+    }
+
+    // The Database logging provider stores {"message": ..., "properties": {"action": ..., "user": ...}}.
+    internal static SecurityEventRow SecurityEvent(DateTime loggedAtUtc, string json)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            var root = document.RootElement;
+            var message = root.TryGetProperty("message", out var m) ? m.GetString() ?? "" : "";
+            var user = "";
+            var action = "";
+            if (root.TryGetProperty("properties", out var properties) && properties.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                user = properties.TryGetProperty("user", out var u) ? u.ToString() : "";
+                action = properties.TryGetProperty("action", out var a) ? a.ToString() : "";
+            }
+
+            return new SecurityEventRow(loggedAtUtc, user, action.Length == 0 ? "SecurityEvent" : action, message);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return new SecurityEventRow(loggedAtUtc, "", "SecurityEvent", json);
+        }
     }
 
     private static IQueryable<TaskExecution> Filter(SchedulerDbContext db, ReportFilter filter)

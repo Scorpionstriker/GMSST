@@ -6,18 +6,24 @@ using Scheduler.Application.Common.Persistence;
 using Scheduler.Application.Configuration;
 using Scheduler.Domain.Entities;
 using Scheduler.Domain.Enums;
+using Scheduler.Extensibility.Contracts;
 using Scheduler.Infrastructure.Logging;
 
 namespace Scheduler.Infrastructure.Persistence;
+
+/// <summary>Pending migrations were not applied because the safety backup failed (FR-73, WP-5i).</summary>
+public sealed class DatabaseUpgradeBlockedException(string reason)
+    : InvalidOperationException($"The database upgrade was stopped because the safety backup failed: {reason.TrimEnd('.')}.");
 
 internal sealed class DatabaseInitializer(
     IDbContextFactory<SchedulerDbContext> contextFactory,
     DatabaseConnection connection,
     IBackupService backups,
+    IEnumerable<ILoggingProvider> loggingProviders,
     TimeProvider clock,
     ILogger<DatabaseInitializer> logger) : IDatabaseInitializer
 {
-    // Serialises start-up across processes (Admin application and Maintenance Agent).
+    // Serialises start-up across processes, for example two Admin applications started at the same time.
     private const long AdvisoryLockKey = 0x474D5353; // "GMSS"
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -62,15 +68,26 @@ internal sealed class DatabaseInitializer(
 
         if ((await db.Database.GetAppliedMigrationsAsync(cancellationToken)).Any())
         {
+            // FR-73 (Must, WP-5i): an upgrade is applied only after a verified safety backup of the scheduler database.
+            string? reason;
             try
             {
-                var backup = await backups.CreateBackupAsync(BackupKind.PreMigration, cancellationToken);
-                logger.LogInformation("Safety backup {File} taken before applying {Count} migration(s).", backup.FileName, pending.Count);
+                var backup = await backups.CreateBackupAsync(BackupKind.PreMigration, [connection.Options.Name], null, cancellationToken);
+                reason = backup.Verified ? null : $"the backup file of {backup.FirstUnverified?.Database} could not be verified";
+                if (reason is null)
+                {
+                    logger.LogInformation("Safety backup {Set} taken before applying {Count} migration(s).", backup.SetName, pending.Count);
+                }
             }
             catch (BackupException ex)
             {
-                // The upgrade still goes ahead: migrations run in a transaction, and a missing pg_dump must not block start-up.
-                logger.LogWarning(ex, "The safety backup before migration failed: {Details}", ex.Details);
+                logger.LogError(ex, "The safety backup before migration failed: {Details}", ex.Details);
+                reason = ex.Message;
+            }
+
+            if (reason is not null)
+            {
+                throw new DatabaseUpgradeBlockedException(reason);
             }
         }
 
@@ -97,6 +114,21 @@ internal sealed class DatabaseInitializer(
         foreach (var (name, type, active) in defaults.Where(d => !providers.Contains(d.Name)))
         {
             db.LoggingProviders.Add(new LoggingProviderSetting(name, type, SchedulerLogLevel.Info, active));
+        }
+
+        // WP-7 (F-13): a provider added by a module gets its own row, active at Info, so it is listed on the
+        // Configuration page and can be switched off there like the built-in ones.
+        var known = providers.Concat(defaults.Select(d => d.Name)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in loggingProviders.Select(p => p.Name).Distinct(StringComparer.OrdinalIgnoreCase).Where(n => !known.Contains(n)))
+        {
+            if (name.Length is 0 or > LoggingProviderSetting.NameMaxLength)
+            {
+                logger.LogWarning("Logging provider name '{Name}' is empty or longer than {Max} characters and was not registered.",
+                    name, LoggingProviderSetting.NameMaxLength);
+                continue;
+            }
+
+            db.LoggingProviders.Add(new LoggingProviderSetting(name, LoggingProviderType.Custom, SchedulerLogLevel.Info, true));
         }
 
         await db.SaveChangesAsync(cancellationToken);

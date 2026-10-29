@@ -1,5 +1,5 @@
 @* One colour per meaning across every page (NFR-01): green success, red failure, amber attention, blue in progress. *@
-<span class="badge @CssClass">@(Text ?? (Value is null ? Display.Empty : Display.Words(Value)))</span>
+<span class="badge @CssClass" title="@Title">@(Text ?? (Value is null ? Display.Empty : Display.Words(Value)))</span>
 
 @code {
     [Parameter] public Enum? Value { get; set; }
@@ -8,6 +8,9 @@
     [Parameter] public string? Text { get; set; }
 
     [Parameter] public string? Tone { get; set; }
+
+    /// <summary>Tooltip text, for example why a task will not run.</summary>
+    [Parameter] public string? Title { get; set; }
 
     private string CssClass => "badge-" + (Tone ?? ToneOf(Value));
 

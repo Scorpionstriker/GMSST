@@ -47,7 +47,8 @@ public sealed record TaskListItem(
     DateTime? StartTimeUtc,
     DateTime? NextRunUtc,
     ExecutionStatus? LastRunStatus,
-    DateTime? LastRunStartUtc);
+    DateTime? LastRunStartUtc,
+    bool IsBuiltIn = false);
 
 public sealed record TaskLookup(Guid Id, string Name, string TaskType, ScheduledTaskStatus Status, bool IsDeleted);
 

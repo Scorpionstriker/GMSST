@@ -12,6 +12,7 @@ missing, with its default value. Values an administrator has changed are never o
 | RetryMaxDelaySeconds | 900 s | 1–86400 (a task may override) |
 | LeaseGraceSeconds | 60 s | 10–3600 |
 | LogRetentionDays | 90 days | 1–3650 |
+| AuditRetentionDays | 365 days | 30–3650 |
 | BackupRetentionCount | 14 backups | 1–365 |
 | SessionTimeoutMinutes | 20 min | 1–480 |
 | MaxFailedLogins | 5 | 1–20 |

@@ -23,17 +23,43 @@ internal sealed class SchedulerClient(
     public async Task<Guid> EnsureTaskAsync(TaskDefinition definition, CancellationToken cancellationToken = default)
     {
         await using var unitOfWork = unitOfWorkFactory.Create();
-        var existing = await unitOfWork.Tasks.FindByNameAsync(definition.Name, includeDeleted: true, cancellationToken);
-        if (existing is not null)
+        var now = clock.GetUtcNow().UtcDateTime;
+        var name = definition.Name;
+        if (definition.SystemKey is { } key)
+        {
+            if (await unitOfWork.Tasks.FindBySystemKeyAsync(key, cancellationToken) is { } builtIn)
+            {
+                return builtIn.Id;
+            }
+
+            // WP-8h: a task created before keys existed is taken over, and restored if it had been deleted.
+            var older = await unitOfWork.Tasks.FindByNameAsync(name, includeDeleted: true, cancellationToken);
+            if (older is { SystemKey: null } && older.TaskType == definition.TaskType)
+            {
+                older.AssignSystemKey(key);
+                if (older.IsDeleted && !await unitOfWork.Tasks.NameExistsAsync(older.Name, older.Id, cancellationToken))
+                {
+                    older.Restore(now, null);
+                }
+
+                await unitOfWork.SaveChangesAsync(cancellationToken);
+                return older.Id;
+            }
+
+            if (older is not null)
+            {
+                name = await FreeNameAsync(unitOfWork, name + " (built-in)", cancellationToken);
+            }
+        }
+        else if (await unitOfWork.Tasks.FindByNameAsync(name, includeDeleted: true, cancellationToken) is { } existing)
         {
             return existing.Id;
         }
 
-        var now = clock.GetUtcNow().UtcDateTime;
         var zone = TimeZones.FindOrUtc(definition.TimeZoneId);
         var input = new TaskInput
         {
-            Name = definition.Name,
+            Name = name,
             Description = definition.Description,
             TaskType = definition.TaskType,
             Payload = definition.Payload,
@@ -59,6 +85,11 @@ internal sealed class SchedulerClient(
         }
 
         var task = TaskWriter.CreateTask(input, now, userId: null);
+        if (definition.SystemKey is { } systemKey)
+        {
+            task.AssignSystemKey(systemKey);
+        }
+
         unitOfWork.Tasks.Add(task);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -68,10 +99,12 @@ internal sealed class SchedulerClient(
         return task.Id;
     }
 
-    public async Task<bool> RunNowAsync(string taskName, CancellationToken cancellationToken = default)
+    public async Task<bool> RunNowAsync(string taskNameOrSystemKey, CancellationToken cancellationToken = default)
     {
         await using var unitOfWork = unitOfWorkFactory.Create();
-        var task = await unitOfWork.Tasks.FindByNameAsync(taskName, includeDeleted: false, cancellationToken);
+        var task = await unitOfWork.Tasks.FindBySystemKeyAsync(taskNameOrSystemKey, cancellationToken) is { IsDeleted: false } byKey
+            ? byKey
+            : await unitOfWork.Tasks.FindByNameAsync(taskNameOrSystemKey, includeDeleted: false, cancellationToken);
         if (task is null || task.Status == ScheduledTaskStatus.Disabled)
         {
             return false;
@@ -84,5 +117,16 @@ internal sealed class SchedulerClient(
         events.Publish(new SchedulerEvent(SchedulerEventKind.TaskQueued, new TaskLifecycleEventArgs(task.Id, task.Name, task.TaskType, null, now)));
         engine.Wake();
         return true;
+    }
+
+    private static async Task<string> FreeNameAsync(IUnitOfWork unitOfWork, string name, CancellationToken cancellationToken)
+    {
+        var candidate = name;
+        for (var i = 2; await unitOfWork.Tasks.NameExistsAsync(candidate, null, cancellationToken); i++)
+        {
+            candidate = $"{name} {i}";
+        }
+
+        return candidate;
     }
 }

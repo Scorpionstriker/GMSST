@@ -25,8 +25,11 @@
     <ProjectReference Include="..\..\src\Scheduler.Domain\Scheduler.Domain.csproj" />
     <ProjectReference Include="..\..\src\Scheduler.Application\Scheduler.Application.csproj" />
     <ProjectReference Include="..\..\src\Scheduler.Engine\Scheduler.Engine.csproj" />
+    <ProjectReference Include="..\..\src\Scheduler.Infrastructure\Scheduler.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Scheduler.Modules.Security\Scheduler.Modules.Security.csproj" />
     <ProjectReference Include="..\..\demos\DemoApps.MaintenanceAgent\DemoApps.MaintenanceAgent.csproj" />
+    <ProjectReference Include="..\..\demos\DemoApps.MaintenanceAgentConnector\DemoApps.MaintenanceAgentConnector.csproj" />
+    <ProjectReference Include="..\..\demos\DemoApps.InventoryMonitor\DemoApps.InventoryMonitor.csproj" />
   </ItemGroup>
 
 </Project>

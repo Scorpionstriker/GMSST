@@ -56,6 +56,11 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
         var entity = await db.AppUsers.FirstOrDefaultAsync(u => u.Id == user.Id, cancellationToken)
                      ?? throw new InvalidOperationException("The user no longer exists.");
+        if (user.Version != 0)
+        {
+            db.Entry(entity).Property(e => e.Version).OriginalValue = user.Version;
+        }
+
         entity.Username = user.Username.Trim();
         entity.PasswordHash = user.PasswordHash;
         entity.PasswordSalt = user.PasswordSalt;
@@ -81,6 +86,10 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
         {
             await db.SaveChangesAsync(cancellationToken);
         }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new UserAccountConflictException("The account was changed by someone else after it was opened.", ex);
+        }
         catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
         {
             throw new InvalidOperationException("Another user already has this username.", ex);
@@ -98,6 +107,7 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
         LockoutEndUtc = user.LockoutEndUtc,
         LastLoginAtUtc = user.LastLoginAtUtc,
         IsActive = user.IsActive,
-        CreatedAtUtc = user.CreatedAtUtc
+        CreatedAtUtc = user.CreatedAtUtc,
+        Version = user.Version
     };
 }

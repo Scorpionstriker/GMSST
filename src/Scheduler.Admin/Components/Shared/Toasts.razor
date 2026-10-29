@@ -4,7 +4,7 @@
 <div class="toasts no-print" aria-live="polite">
     @foreach (var toast in Service.Toasts)
     {
-        <div class="toast @(toast.IsError ? "error" : "")" role="@(toast.IsError ? "alert" : "status")" @onclick="() => Service.Dismiss(toast.Id)">
+        <div class="toast @(toast.Kind switch { ToastKind.Error => "error", ToastKind.Warning => "warning", _ => "" })" role="@(toast.Kind == ToastKind.Success ? "status" : "alert")" @onclick="() => Service.Dismiss(toast.Id)">
             @toast.Message
         </div>
     }
