@@ -1,0 +1,75 @@
+@* A line chart drawn as SVG; gaps (null values) break the line (FR-56). *@
+@if (Values.All(v => v is null))
+{
+    <p class="muted">No data for this period.</p>
+}
+else
+{
+    <svg class="chart" viewBox="0 0 @Width @Height" role="img" aria-label="@Title">
+        <title>@Title</title>
+        @for (var tick = 0; tick <= 4; tick++)
+        {
+            var value = Max * tick / 4;
+            <g>
+                <line class="axis" x1="@Left" x2="@(Width - 4)" y1="@F(Y(value))" y2="@F(Y(value))" />
+                <text x="@(Left - 4)" y="@F(Y(value) + 3)" text-anchor="end">@Label(value)</text>
+            </g>
+        }
+        @foreach (var segment in Segments())
+        {
+            <polyline class="line" points="@segment" />
+        }
+        @for (var i = 0; i < Values.Count; i++)
+        {
+            var index = i;
+            <g>
+                @if (Values[index] is { } point)
+                {
+                    <circle class="point" cx="@F(X(index))" cy="@F(Y(point))" r="2.5"><title>@Labels[index]: @Label(point)</title></circle>
+                }
+                <text x="@F(X(index))" y="@(Height - 6)" text-anchor="middle">@(Values.Count <= 12 || index % (int)Math.Ceiling(Values.Count / 12.0) == 0 ? Labels[index] : "")</text>
+            </g>
+        }
+    </svg>
+}
+
+@code {
+    private const double Width = 640, Height = 200, Left = 52, Bottom = Height - 22, Top = 8;
+
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public IReadOnlyList<string> Labels { get; set; } = [];
+    [Parameter] public IReadOnlyList<double?> Values { get; set; } = [];
+    [Parameter] public Func<double, string>? Format { get; set; }
+
+    private double Max => BarChart.NiceMax(Values.Max() ?? 0);
+
+    private double X(int i) => Left + (Width - Left - 12) * (Values.Count <= 1 ? 0.5 : i / (double)(Values.Count - 1));
+
+    private double Y(double value) => Bottom - (Bottom - Top) * (value / Max);
+
+    private IEnumerable<string> Segments()
+    {
+        var points = new List<string>();
+        for (var i = 0; i < Values.Count; i++)
+        {
+            if (Values[i] is { } value)
+            {
+                points.Add($"{F(X(i))},{F(Y(value))}");
+            }
+            else if (points.Count > 0)
+            {
+                yield return string.Join(' ', points);
+                points.Clear();
+            }
+        }
+
+        if (points.Count > 0)
+        {
+            yield return string.Join(' ', points);
+        }
+    }
+
+    private string Label(double value) => Format?.Invoke(value) ?? value.ToString("0.#", CultureInfo.InvariantCulture);
+
+    private static string F(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+}

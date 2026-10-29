@@ -1,0 +1,36 @@
+@* Errors that do not belong to one field, in plain language (FR-62). *@
+@if (Message is not null)
+{
+    <div class="banner banner-error" role="alert">@Message</div>
+}
+else if (Result is { IsFailure: true })
+{
+    var general = Result.Errors.Where(e => e.Field is null || !FieldsShown).ToList();
+    @if (general.Count > 0)
+    {
+        <div class="banner banner-error" role="alert">
+            @if (general.Count == 1)
+            {
+                @general[0].Message
+            }
+            else
+            {
+                <ul>
+                    @foreach (var error in general)
+                    {
+                        <li>@error.Message</li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Result? Result { get; set; }
+
+    [Parameter] public string? Message { get; set; }
+
+    /// <summary>True on forms that show field errors beneath their fields, so they are not repeated here.</summary>
+    [Parameter] public bool FieldsShown { get; set; }
+}

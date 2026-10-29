@@ -1,0 +1,9 @@
+@if (Result is { Succeeded: false } && Result.Field == Field)
+{
+    <span class="field-error" role="alert">@Result.Error</span>
+}
+
+@code {
+    [Parameter] public UserActionResult? Result { get; set; }
+    [Parameter] public string Field { get; set; } = "";
+}

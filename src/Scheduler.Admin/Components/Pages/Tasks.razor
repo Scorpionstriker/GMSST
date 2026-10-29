@@ -1,4 +1,219 @@
 @page "/tasks"
+@using Scheduler.Application.Tasks
+@using Scheduler.Application.Cron
+@inject IQueryHandler<SearchTasksQuery, PagedResult<TaskListItem>> Search
+@inject IQueryHandler<GetTaskTypesQuery, IReadOnlyList<TaskTypeInfo>> GetTaskTypes
+@inject ICommandHandler<RunTaskNowCommand, Guid> RunNow
+@inject ICommandHandler<ChangeTaskStatusCommand, Unit> ChangeStatus
+@inject ICommandHandler<DeleteTaskCommand, Unit> Delete
+@inject ICommandHandler<RestoreTaskCommand, Unit> Restore
+@inject ICurrentUser CurrentUser
+@inject ToastService Toasts
+@inject NavigationManager Navigation
 
-<h1>Tasks</h1>
-<p>Searchable, filterable task list with create, edit, pause, resume, run now and delete (FR-01 to FR-17, FR-58).</p>
+<div class="page-header">
+    <h1>Tasks</h1>
+    @if (CurrentUser.IsAdministrator)
+    {
+        <a class="btn btn-primary" href="tasks/new">New task</a>
+    }
+</div>
+
+@* Search, filter and sort run in the database, so the list stays fast with many tasks (FR-58, NFR-11). *@
+<form class="toolbar" @onsubmit="() => LoadAsync(1)">
+    <div class="field">
+        <label for="search">Search</label>
+        <input id="search" @bind="_text" placeholder="Name or description" />
+    </div>
+    <div class="field">
+        <label for="status">Status</label>
+        <select id="status" @bind="_status" @bind:after="() => LoadAsync(1)">
+            <option value="">Any</option>
+            @foreach (var status in Enum.GetValues<ScheduledTaskStatus>())
+            {
+                <option value="@status">@status</option>
+            }
+        </select>
+    </div>
+    <div class="field">
+        <label for="type">Task type</label>
+        <select id="type" @bind="_taskType" @bind:after="() => LoadAsync(1)">
+            <option value="">Any</option>
+            @foreach (var type in _types)
+            {
+                <option value="@type.TaskType">@type.DisplayName</option>
+            }
+        </select>
+    </div>
+    <div class="field checkbox">
+        <label><input type="checkbox" @bind="_showDeleted" @bind:after="() => LoadAsync(1)" /> Show deleted tasks</label>
+    </div>
+    <button class="btn" type="submit">Search</button>
+</form>
+
+<ErrorBanner Result="_failed" />
+
+@if (_page is { } page)
+{
+    @if (page.TotalCount == 0)
+    {
+        <div class="card">
+            <p>No tasks match. @(CurrentUser.IsAdministrator ? "Create one with New task." : "")</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-wrap card">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th><SortHeader TColumn="TaskSortColumn" Title="Name" Column="TaskSortColumn.Name" Current="_sort" Descending="_descending" Sort="SortAsync" /></th>
+                        <th><SortHeader TColumn="TaskSortColumn" Title="Type" Column="TaskSortColumn.TaskType" Current="_sort" Descending="_descending" Sort="SortAsync" /></th>
+                        <th>Schedule</th>
+                        <th><SortHeader TColumn="TaskSortColumn" Title="Status" Column="TaskSortColumn.Status" Current="_sort" Descending="_descending" Sort="SortAsync" /></th>
+                        <th><SortHeader TColumn="TaskSortColumn" Title="Next run" Column="TaskSortColumn.NextRun" Current="_sort" Descending="_descending" Sort="SortAsync" /></th>
+                        <th><SortHeader TColumn="TaskSortColumn" Title="Last run" Column="TaskSortColumn.LastRun" Current="_sort" Descending="_descending" Sort="SortAsync" /></th>
+                        <th class="num"><SortHeader TColumn="TaskSortColumn" Title="Priority" Column="TaskSortColumn.Priority" Current="_sort" Descending="_descending" Sort="SortAsync" /></th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var task in page.Items)
+                    {
+                        <tr>
+                            <td>
+                                <a href="tasks/@task.Id">@task.Name</a>
+                                @if (!string.IsNullOrEmpty(task.Description))
+                                {
+                                    <div class="hint">@task.Description</div>
+                                }
+                            </td>
+                            <td class="mono">@task.TaskType</td>
+                            <td>@ScheduleDescriber.Describe(task.ScheduleType, task.CronExpression, task.IntervalSeconds, task.TimeZoneId, task.StartTimeUtc)</td>
+                            <td>
+                                @if (task.IsDeleted)
+                                {
+                                    <StatusBadge Text="Deleted" Tone="muted" />
+                                }
+                                else
+                                {
+                                    <StatusBadge Value="task.Status" />
+                                }
+                            </td>
+                            <td>@(task.Status == ScheduledTaskStatus.Active && !task.IsDeleted ? Display.Time(task.NextRunUtc) : Display.Empty)</td>
+                            <td>
+                                @if (task.LastRunStatus is { } last)
+                                {
+                                    <StatusBadge Value="last" /> <span class="hint">@Display.ShortTime(task.LastRunStartUtc)</span>
+                                }
+                                else
+                                {
+                                    <span class="muted">Never</span>
+                                }
+                            </td>
+                            <td class="num">@task.Priority</td>
+                            <td class="row-actions">
+                                @if (CurrentUser.IsAdministrator)
+                                {
+                                    @if (task.IsDeleted)
+                                    {
+                                        <button class="btn btn-small" @onclick="() => RestoreAsync(task)">Restore</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-small" disabled="@(task.Status == ScheduledTaskStatus.Disabled)" title="Queue a run now"
+                                                @onclick="() => RunNowAsync(task)">Run now</button>
+                                        @if (task.Status == ScheduledTaskStatus.Active)
+                                        {
+                                            <button class="btn btn-small" @onclick="() => SetStatusAsync(task, ScheduledTaskStatus.Paused)">Pause</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-small" @onclick="() => SetStatusAsync(task, ScheduledTaskStatus.Active)">Resume</button>
+                                        }
+                                        <button class="btn btn-small btn-danger" @onclick="() => _deleting = task">Delete</button>
+                                    }
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <Pager Page="page" Changed="LoadAsync" />
+        </div>
+    }
+}
+else if (_failed is null)
+{
+    <p class="muted">Loading…</p>
+}
+
+<ConfirmDialog Visible="_deleting is not null" Title="Delete task?" ConfirmText="Delete task" Confirmed="DeleteAsync" Cancelled="() => _deleting = null">
+    <p>Delete <strong>@_deleting?.Name</strong>? It will stop running and its waiting queue entries are cancelled.
+        Its execution history is kept, and you can restore it later from <em>Show deleted tasks</em>.</p>
+</ConfirmDialog>
+
+@code {
+    private PagedResult<TaskListItem>? _page;
+    private Result? _failed;
+    private IReadOnlyList<TaskTypeInfo> _types = [];
+    private string? _text;
+    private ScheduledTaskStatus? _status;
+    private string? _taskType;
+    private bool _showDeleted;
+    private TaskSortColumn _sort = TaskSortColumn.Name;
+    private bool _descending;
+    private TaskListItem? _deleting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _types = (await GetTaskTypes.HandleAsync(new GetTaskTypesQuery())).Value ?? [];
+        await LoadAsync(1);
+    }
+
+    private async Task LoadAsync(int pageNumber)
+    {
+        var criteria = new TaskSearchCriteria(_text, _status, string.IsNullOrEmpty(_taskType) ? null : _taskType, _showDeleted, _sort, _descending);
+        var result = await Search.HandleAsync(new SearchTasksQuery(criteria, new PageRequest(pageNumber)));
+        _failed = result.IsFailure ? result : null;
+        _page = result.Value ?? _page;
+    }
+
+    private Task SortAsync(TaskSortColumn column)
+    {
+        _descending = _sort == column && !_descending;
+        _sort = column;
+        return LoadAsync(1);
+    }
+
+    private async Task RunNowAsync(TaskListItem task) =>
+        await Report(await RunNow.HandleAsync(new RunTaskNowCommand(task.Id)), $"'{task.Name}' has been queued and will start shortly.");
+
+    private async Task SetStatusAsync(TaskListItem task, ScheduledTaskStatus status) =>
+        await Report(await ChangeStatus.HandleAsync(new ChangeTaskStatusCommand(task.Id, status)),
+            status == ScheduledTaskStatus.Paused ? $"'{task.Name}' is paused." : $"'{task.Name}' is active again.");
+
+    private async Task DeleteAsync()
+    {
+        var task = _deleting!;
+        _deleting = null;
+        await Report(await Delete.HandleAsync(new DeleteTaskCommand(task.Id)), $"'{task.Name}' has been deleted.");
+    }
+
+    private async Task RestoreAsync(TaskListItem task) =>
+        await Report(await Restore.HandleAsync(new RestoreTaskCommand(task.Id)), $"'{task.Name}' has been restored with its previous status.");
+
+    private async Task Report(Result result, string success)
+    {
+        if (result.IsSuccess)
+        {
+            Toasts.Success(success);
+        }
+        else
+        {
+            Toasts.Error(result.Error!.Message);
+        }
+
+        await LoadAsync(_page?.Page ?? 1);
+    }
+}

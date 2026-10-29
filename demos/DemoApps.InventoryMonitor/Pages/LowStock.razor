@@ -1,4 +1,77 @@
 @page "/inventory/low-stock"
+@inject InventoryStore Store
+@inject ISchedulerClient Scheduler
+@inject ICurrentUser CurrentUser
 
-<h1>Low-stock list</h1>
-<p>Products below their reorder level go here.</p>
+<div class="page-header">
+    <h1>Low-stock list</h1>
+    <div class="actions">
+        <button class="btn" @onclick="LoadAsync">Refresh</button>
+        @if (CurrentUser.IsAdministrator)
+        {
+            <button class="btn btn-primary" @onclick="RunNowAsync">Run check now</button>
+        }
+    </div>
+</div>
+
+@if (_notice is not null)
+{
+    <div class="banner banner-info" role="status">@_notice</div>
+}
+
+<div class="card">
+    @if (_report is null)
+    {
+        <p class="muted">The low-stock check has not run yet. It runs every 15 minutes, or select Run check now.</p>
+    }
+    else
+    {
+        <p>Produced by the scheduled low-stock check at <strong>@_report.CreatedAtUtc.ToLocalTime().ToString("g")</strong>.</p>
+        @if (_items.Count == 0)
+        {
+            <div class="banner banner-success">All products were above their reorder level.</div>
+        }
+        else
+        {
+            <table class="table">
+                <thead><tr><th>SKU</th><th>Product</th><th class="num">On hand</th><th class="num">Reorder level</th><th class="num">Shortfall</th></tr></thead>
+                <tbody>
+                    @foreach (var item in _items)
+                    {
+                        <tr>
+                            <td>@item.Sku</td>
+                            <td>@item.Name</td>
+                            <td class="num">@item.QuantityOnHand</td>
+                            <td class="num">@item.ReorderLevel</td>
+                            <td class="num">@(item.ReorderLevel - item.QuantityOnHand + 1)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    }
+</div>
+
+@code {
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private StockReport? _report;
+    private IReadOnlyList<LowStockLine> _items = [];
+    private string? _notice;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _report = (await Store.GetReportsAsync(InventoryStore.ReportLowStock, DateTime.UnixEpoch, 1)).FirstOrDefault();
+        _items = _report is null ? [] : JsonSerializer.Deserialize<LowStockDetails>(_report.Details, Json)?.Items ?? [];
+    }
+
+    private async Task RunNowAsync()
+    {
+        _notice = await Scheduler.RunNowAsync("Inventory: low-stock check")
+            ? "The low-stock check has been queued. Select Refresh in a moment to see the result."
+            : "The low-stock check task was not found or is disabled.";
+    }
+
+    private sealed record LowStockDetails(IReadOnlyList<LowStockLine> Items);
+}

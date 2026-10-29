@@ -3,9 +3,11 @@
 <plist version="1.0">
     <!-- See https://aka.ms/maui-publish-app-store#add-entitlements for more information about adding entitlements.-->
     <dict>
-        <!-- App Sandbox must be enabled to distribute a MacCatalyst app through the Mac App Store. -->
+        <!-- The scheduler is a local tool, not an App Store app: it runs pg_dump and pg_restore for backups (FR-67)
+             and writes to its own folders, which the App Sandbox would block. Enable the sandbox only if the
+             app is ever distributed through the Mac App Store. -->
         <key>com.apple.security.app-sandbox</key>
-        <true/>
+        <false/>
         <!-- When App Sandbox is enabled, this value is required to open outgoing network connections. -->
         <key>com.apple.security.network.client</key>
         <true/>

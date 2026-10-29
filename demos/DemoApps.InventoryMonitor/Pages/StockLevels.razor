@@ -1,4 +1,108 @@
 @page "/inventory/stock"
+@inject InventoryStore Store
+@inject ICurrentUser CurrentUser
 
-<h1>Stock levels</h1>
-<p>Stock levels go here.</p>
+<div class="page-header">
+    <h1>Stock levels</h1>
+    <button class="btn" @onclick="LoadAsync">Refresh</button>
+</div>
+
+@if (_error is not null)
+{
+    <div class="banner banner-error" role="alert">@_error</div>
+}
+
+@if (_products is not null)
+{
+    <div class="card-grid">
+        <div class="card stat"><span class="stat-label">Products</span><span class="stat-value">@_products.Count</span></div>
+        <div class="card stat"><span class="stat-label">Stock value</span><span class="stat-value">@_products.Sum(p => p.StockValue).ToString("N2")</span></div>
+        <div class="card stat"><span class="stat-label">At or below reorder level</span><span class="stat-value">@_products.Count(p => p.IsLow)</span></div>
+        <div class="card stat">
+            <span class="stat-label">Last stock report</span>
+            <span class="stat-value small">@(_reports.FirstOrDefault()?.CreatedAtUtc.ToLocalTime().ToString("g") ?? "None yet")</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <table class="table">
+            <thead><tr><th>Product</th><th class="num">On hand</th><th class="num">Reorder level</th><th>Status</th><th class="num">Value</th>@if (CurrentUser.IsAdministrator) {<th>Adjust</th>}</tr></thead>
+            <tbody>
+                @foreach (var p in _products)
+                {
+                    <tr>
+                        <td>@p.Name <span class="muted">@p.Sku</span></td>
+                        <td class="num">@p.QuantityOnHand</td>
+                        <td class="num">@p.ReorderLevel</td>
+                        <td>
+                            @if (p.IsLow)
+                            {
+                                <span class="badge badge-warning">Low</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-success">OK</span>
+                            }
+                        </td>
+                        <td class="num">@p.StockValue.ToString("N2")</td>
+                        @if (CurrentUser.IsAdministrator)
+                        {
+                            <td class="row-actions">
+                                <button class="btn btn-small" title="Remove one" @onclick="() => AdjustAsync(p, -1)">−1</button>
+                                <button class="btn btn-small" title="Add ten" @onclick="() => AdjustAsync(p, 10)">+10</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Recent stock reports</h2>
+        @if (_reports.Count == 0)
+        {
+            <p class="muted">No stock reports yet. The "Inventory: hourly stock report" task creates one every hour; use Run now on the Tasks page to create one immediately.</p>
+        }
+        else
+        {
+            <table class="table">
+                <thead><tr><th>Time</th><th class="num">Products</th><th class="num">Low</th><th class="num">Value</th></tr></thead>
+                <tbody>
+                    @foreach (var r in _reports)
+                    {
+                        <tr><td>@r.CreatedAtUtc.ToLocalTime().ToString("g")</td><td class="num">@r.ProductCount</td><td class="num">@r.LowStockCount</td><td class="num">@r.TotalValue.ToString("N2")</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@code {
+    private IReadOnlyList<Product>? _products;
+    private IReadOnlyList<StockReport> _reports = [];
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        try
+        {
+            _products = await Store.GetProductsAsync();
+            _reports = await Store.GetReportsAsync(InventoryStore.ReportStock, DateTime.UtcNow.AddDays(-7), 10);
+        }
+        catch (Exception)
+        {
+            _error = "The inventory data could not be loaded.";
+        }
+    }
+
+    private async Task AdjustAsync(Product product, int change)
+    {
+        _error = await Store.AdjustStockAsync(product.Id, change);
+        await LoadAsync();
+    }
+}

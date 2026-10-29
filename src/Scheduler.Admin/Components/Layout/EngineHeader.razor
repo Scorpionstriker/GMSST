@@ -1,0 +1,67 @@
+@implements IDisposable
+@inject SchedulerHost Host
+@inject ISchedulerEvents Events
+@inject ICurrentUser CurrentUser
+@inject IServiceProvider Services
+@inject NavigationManager Navigation
+@inject ThemeService Theme
+@inject IJSRuntime JS
+
+@* Engine status is always visible (FR-57), with the theme switch and the signed-in user. *@
+<header class="header no-print">
+    <span class="engine-status" title="Scheduling engine on @Host.Engine.HostName">
+        <span class="dot @StateClass"></span>
+        Engine @Host.Engine.State.ToString().ToLowerInvariant()
+        <span class="muted">· @Host.Engine.HostName · @Host.Engine.RunningCount running</span>
+    </span>
+    <span class="spacer"></span>
+    <button class="btn btn-small" @onclick="ToggleThemeAsync" aria-label="Switch theme">@(Theme.IsDark ? "Light theme" : "Dark theme")</button>
+    @if (Authentication is not null && CurrentUser.IsAuthenticated)
+    {
+        <span>@CurrentUser.Username <span class="badge badge-muted">@CurrentUser.Role</span></span>
+        <button class="btn btn-small" @onclick="SignOutAsync">Sign out</button>
+    }
+</header>
+
+@code {
+    private Timer? _refresh;
+
+    private IAuthenticationProvider? Authentication => Services.GetService<IAuthenticationProvider>();
+
+    private string StateClass => Host.Engine.State.ToString().ToLowerInvariant();
+
+    protected override void OnInitialized()
+    {
+        Events.EngineStateChanged += OnEngineChanged;
+        Events.TaskStarted += OnTaskChanged;
+        Events.TaskSucceeded += OnTaskChanged;
+        Events.TaskFailed += OnTaskChanged;
+        // The running count also changes when a run is abandoned, so it is refreshed now and then as well.
+        _refresh = new Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    }
+
+    private void OnEngineChanged(object? sender, EngineStateEventArgs e) => InvokeAsync(StateHasChanged);
+
+    private void OnTaskChanged(object? sender, TaskLifecycleEventArgs e) => InvokeAsync(StateHasChanged);
+
+    private Task ToggleThemeAsync() => Theme.ToggleAsync(JS);
+
+    private async Task SignOutAsync()
+    {
+        if (Authentication is { } authentication)
+        {
+            await authentication.SignOutAsync();
+        }
+
+        Navigation.NavigateTo("/login");
+    }
+
+    public void Dispose()
+    {
+        _refresh?.Dispose();
+        Events.EngineStateChanged -= OnEngineChanged;
+        Events.TaskStarted -= OnTaskChanged;
+        Events.TaskSucceeded -= OnTaskChanged;
+        Events.TaskFailed -= OnTaskChanged;
+    }
+}

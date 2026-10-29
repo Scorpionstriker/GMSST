@@ -1,4 +1,165 @@
 @page "/reports"
+@using Scheduler.Application.Reports
+@using Scheduler.Application.Tasks
+@inject IQueryHandler<GenerateReportQuery, ReportResult> Generate
+@inject IQueryHandler<GetTaskLookupsQuery, IReadOnlyList<TaskLookup>> GetLookups
+@inject IFileSaver Files
+@inject ToastService Toasts
+@inject IJSRuntime JS
 
-<h1>Reports</h1>
-<p>Execution summary, failures and errors, performance, upcoming schedule, and security and audit reports with CSV export (FR-64 to FR-66).</p>
+<div class="page-header">
+    <h1>Reports</h1>
+    @if (_report is not null)
+    {
+        <div class="actions no-print">
+            <button class="btn" @onclick="ExportAsync">Export CSV</button>
+            <button class="btn" @onclick="PrintAsync">Print</button>
+        </div>
+    }
+</div>
+
+@* Five reports, each answering one question (FR-64), for a date range of at most a year (FR-65). *@
+<form class="toolbar no-print" @onsubmit="GenerateAsync">
+    <div class="field">
+        <label for="type">Report</label>
+        <select id="type" @bind="_type">
+            <option value="@ReportType.ExecutionSummary">Execution summary</option>
+            <option value="@ReportType.FailuresAndErrors">Failures and errors</option>
+            <option value="@ReportType.Performance">Performance</option>
+            <option value="@ReportType.UpcomingSchedule">Upcoming schedule</option>
+            <option value="@ReportType.SecurityAudit">Security audit (sign-ins)</option>
+        </select>
+    </div>
+    <div class="field"><label for="from">From</label><input id="from" type="date" @bind="_from" /></div>
+    <div class="field"><label for="to">To</label><input id="to" type="date" @bind="_to" /></div>
+    @if (_type != ReportType.SecurityAudit)
+    {
+        <div class="field">
+            <label for="task">Task</label>
+            <select id="task" @bind="TaskFilter">
+                <option value="">All tasks</option>
+                @foreach (var task in _lookups)
+                {
+                    <option value="@task.Id">@task.Name</option>
+                }
+            </select>
+        </div>
+    }
+    @if (_type is ReportType.ExecutionSummary or ReportType.Performance)
+    {
+        <div class="field">
+            <label for="status">Status</label>
+            <select id="status" @bind="_status">
+                <option value="">Any</option>
+                @foreach (var status in Enum.GetValues<ExecutionStatus>())
+                {
+                    <option value="@status">@Display.Words(status)</option>
+                }
+            </select>
+        </div>
+    }
+    <button class="btn btn-primary" type="submit" disabled="@_busy">@(_busy ? "Generating…" : "Generate")</button>
+</form>
+<FieldError Result="_result" Field="To" />
+<ErrorBanner Result="_result" FieldsShown="true" />
+
+@if (_report is { } r)
+{
+    <div class="card">
+        <h2>@r.Title</h2>
+        <p class="muted">@r.Question</p>
+        <p class="hint">@r.Parameters · generated @Display.Time(r.GeneratedAtUtc)</p>
+
+        <div class="card-grid">
+            @foreach (var figure in r.Summary)
+            {
+                <div class="card stat"><span class="stat-label">@figure.Label</span><span class="stat-value small">@figure.Value</span></div>
+            }
+        </div>
+
+        <h3>@r.Chart.Title</h3>
+        <BarChart Chart="r.Chart" />
+
+        @if (r.Rows.Count == 0)
+        {
+            <p class="muted">No rows for these parameters.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr>@foreach (var column in r.Columns) { <th>@column</th> }</tr></thead>
+                    <tbody>
+                        @foreach (var row in r.Rows)
+                        {
+                            <tr>@foreach (var cell in row) { <td>@cell</td> }</tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        @if (r.Truncated)
+        {
+            <div class="banner banner-warning">Only the first rows are shown. Narrow the date range or choose a task to see everything.</div>
+        }
+    </div>
+}
+
+@code {
+    private ReportType _type = ReportType.ExecutionSummary;
+    private DateTime _from = DateTime.Today.AddDays(-7);
+    private DateTime _to = DateTime.Today;
+    private Guid? _task;
+    private ExecutionStatus? _status;
+    private IReadOnlyList<TaskLookup> _lookups = [];
+    private ReportResult? _report;
+    private Result? _result;
+    private bool _busy;
+    private (DateTime From, DateTime To) _range;
+
+    private string TaskFilter
+    {
+        get => _task?.ToString() ?? "";
+        set => _task = Guid.TryParse(value, out var id) ? id : null;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _lookups = (await GetLookups.HandleAsync(new GetTaskLookupsQuery())).Value ?? [];
+    }
+
+    private async Task GenerateAsync()
+    {
+        _busy = true;
+        try
+        {
+            // The whole of the "To" day is included.
+            _range = (Display.ToUtc(_from.Date)!.Value, Display.ToUtc(_to.Date.AddDays(1))!.Value);
+            var query = new GenerateReportQuery(_type, _range.From, _range.To,
+                _type == ReportType.SecurityAudit ? null : _task,
+                _type is ReportType.ExecutionSummary or ReportType.Performance ? _status : null);
+            var result = await Generate.HandleAsync(query);
+            _result = result;
+            _report = result.Value;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        var csv = _report!.ToCsv(_range.From, _range.To);
+        try
+        {
+            Toasts.Success("Saved to " + await Files.SaveAsync(csv.FileName, csv.Content));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Toasts.Error("The file could not be saved: " + ex.Message);
+        }
+    }
+
+    private Task PrintAsync() => JS.InvokeVoidAsync("gmssPrint").AsTask();
+}

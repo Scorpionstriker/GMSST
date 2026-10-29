@@ -44,10 +44,35 @@ public class LayerDependencyTests
         Assert.True(result.IsSuccessful, $"{project} depends on a forbidden layer: {offenders}");
     }
 
+    /// <summary>
+    /// Positive control: the same rule must fail for a dependency that really exists, otherwise the tests above
+    /// could pass without checking anything (for example if the names given to the matcher were wrong).
+    /// </summary>
+    [Theory]
+    [InlineData(Infrastructure, Application)]
+    [InlineData(Engine, Application)]
+    [InlineData(Security, Extensibility)]
+    [InlineData(Inventory, Extensibility)]
+    [InlineData(MaintenanceAgent, Engine)]
+    public void Rule_DetectsAnExistingDependency(string project, string dependency)
+    {
+        var result = Types.InAssembly(Assembly.Load(project))
+            .ShouldNot()
+            .HaveDependencyOn(dependency)
+            .GetResult();
+
+        Assert.False(result.IsSuccessful, $"{project} should use {dependency}; if this fails the dependency rules are not being checked.");
+    }
+
+    /// <summary>Only the infrastructure layer talks to PostgreSQL; the other layers use its interfaces (Phase 4, Section 3.1).</summary>
     [Theory]
     [InlineData(Domain)]
     [InlineData(Extensibility)]
-    public void CoreContracts_DoNotDependOnEntityFramework(string project)
+    [InlineData(Application)]
+    [InlineData(Engine)]
+    [InlineData(Security)]
+    [InlineData(Inventory)]
+    public void OnlyInfrastructure_UsesEntityFrameworkOrNpgsql(string project)
     {
         var result = Types.InAssembly(Assembly.Load(project))
             .ShouldNot()

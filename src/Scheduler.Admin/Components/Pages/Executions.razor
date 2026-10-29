@@ -1,4 +1,248 @@
 @page "/executions"
+@using Scheduler.Application.Executions
+@using Scheduler.Application.Reports
+@using Scheduler.Application.Tasks
+@inject IQueryHandler<SearchExecutionsQuery, PagedResult<ExecutionListItem>> Search
+@inject IQueryHandler<GetExecutionDetailQuery, ExecutionDetail> GetDetail
+@inject IQueryHandler<ExportExecutionsQuery, CsvFile> Export
+@inject IQueryHandler<GetTaskLookupsQuery, IReadOnlyList<TaskLookup>> GetLookups
+@inject IFileSaver Files
+@inject ToastService Toasts
+@inject NavigationManager Navigation
 
-<h1>Execution History</h1>
-<p>Past runs; selecting a run shows its error, stack trace, output and log entries (FR-58).</p>
+<div class="page-header">
+    <h1>Execution history</h1>
+    <button class="btn" @onclick="ExportAsync" disabled="@_exporting">@(_exporting ? "Exporting…" : "Export CSV")</button>
+</div>
+
+@* Filters run in the database (FR-58, NFR-11). Dates are in your local time. *@
+<form class="toolbar" @onsubmit="() => LoadAsync(1)">
+    <div class="field">
+        <label for="task">Task</label>
+        <select id="task" @bind="TaskFilter">
+            <option value="">All tasks</option>
+            @foreach (var task in _lookups)
+            {
+                <option value="@task.Id">@task.Name@(task.IsDeleted ? " (deleted)" : "")</option>
+            }
+        </select>
+    </div>
+    <div class="field">
+        <label for="status">Status</label>
+        <select id="status" @bind="_status">
+            <option value="">Any</option>
+            @foreach (var status in Enum.GetValues<ExecutionStatus>())
+            {
+                <option value="@status">@Display.Words(status)</option>
+            }
+        </select>
+    </div>
+    <div class="field">
+        <label for="trigger">Trigger</label>
+        <select id="trigger" @bind="_trigger">
+            <option value="">Any</option>
+            @foreach (var trigger in Enum.GetValues<TriggerType>())
+            {
+                <option value="@trigger">@trigger</option>
+            }
+        </select>
+    </div>
+    <div class="field"><label for="from">From</label><input id="from" type="datetime-local" @bind="_from" /></div>
+    <div class="field"><label for="to">To</label><input id="to" type="datetime-local" @bind="_to" /></div>
+    <button class="btn" type="submit">Apply</button>
+</form>
+
+<ErrorBanner Result="_failed" />
+
+@if (_detail is { } d)
+{
+    var e = d.Execution;
+    <div class="card detail-panel">
+        <div class="page-header">
+            <h2 style="margin:0">@e.TaskName · <StatusBadge Value="e.Status" /></h2>
+            <button class="btn btn-small" @onclick="CloseDetail">Close</button>
+        </div>
+        <dl class="kv">
+            <dt>Execution id</dt><dd class="mono">@e.Id</dd>
+            <dt>Task type</dt><dd class="mono">@e.TaskType</dd>
+            <dt>Trigger</dt><dd>@e.TriggerType</dd>
+            <dt>Due</dt><dd>@Display.Time(e.ScheduledTimeUtc)</dd>
+            <dt>Started</dt><dd>@Display.Time(e.StartTimeUtc) (delay @Display.Duration(e.DelayMs))</dd>
+            <dt>Ended</dt><dd>@Display.Time(e.EndTimeUtc)</dd>
+            <dt>Duration</dt><dd>@Display.Duration(e.DurationMs)</dd>
+            <dt>Retry</dt><dd>@e.RetryCount</dd>
+            <dt>Host</dt><dd>@(e.HostName ?? Display.Empty)</dd>
+        </dl>
+        @if (!string.IsNullOrEmpty(d.Output))
+        {
+            <h3>Output</h3>
+            <pre>@d.Output</pre>
+        }
+        @foreach (var error in d.Errors)
+        {
+            <h3>Error: @error.ErrorType</h3>
+            <div class="banner banner-error">@error.ErrorMessage</div>
+            @if (!string.IsNullOrEmpty(error.StackTrace))
+            {
+                <details><summary>Technical details</summary><pre>@error.StackTrace</pre></details>
+            }
+        }
+        <h3>Log</h3>
+        @if (d.Logs.Count == 0)
+        {
+            <p class="muted">No log entries for this run.</p>
+        }
+        else
+        {
+            <table class="table">
+                <thead><tr><th>Time</th><th>Level</th><th>Source</th><th>Message</th></tr></thead>
+                <tbody>
+                    @foreach (var log in d.Logs)
+                    {
+                        <tr>
+                            <td style="white-space:nowrap">@Display.Time(log.LoggedAtUtc)</td>
+                            <td><StatusBadge Value="log.Level" Tone="@LevelTone(log.Level)" /></td>
+                            <td class="mono">@log.Source</td>
+                            <td>@log.Message</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@if (_page is { } page)
+{
+    @if (page.TotalCount == 0)
+    {
+        <div class="card"><p>No executions match these filters.</p></div>
+    }
+    else
+    {
+        <div class="card table-wrap">
+            <table class="table">
+                <thead>
+                    <tr><th>Task</th><th>Status</th><th>Trigger</th><th>Due</th><th>Started</th><th class="num">Delay</th><th class="num">Duration</th><th class="num">Retry</th><th>Host</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var e in page.Items)
+                    {
+                        <tr class="clickable @(_detail?.Execution.Id == e.Id ? "selected" : "")" @onclick="() => OpenAsync(e.Id)">
+                            <td>@e.TaskName</td>
+                            <td><StatusBadge Value="e.Status" /></td>
+                            <td>@e.TriggerType</td>
+                            <td>@Display.Time(e.ScheduledTimeUtc)</td>
+                            <td>@Display.Time(e.StartTimeUtc)</td>
+                            <td class="num">@Display.Duration(e.DelayMs)</td>
+                            <td class="num">@Display.Duration(e.DurationMs)</td>
+                            <td class="num">@e.RetryCount</td>
+                            <td>@e.HostName</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <Pager Page="page" Changed="LoadAsync" />
+        </div>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "id")] public Guid? ExecutionId { get; set; }
+    [SupplyParameterFromQuery(Name = "taskId")] public Guid? TaskId { get; set; }
+
+    private PagedResult<ExecutionListItem>? _page;
+    private ExecutionDetail? _detail;
+    private Result? _failed;
+    private IReadOnlyList<TaskLookup> _lookups = [];
+    private Guid? _task;
+    private ExecutionStatus? _status;
+    private TriggerType? _trigger;
+    private DateTime? _from;
+    private DateTime? _to;
+    private bool _exporting;
+
+    private string TaskFilter
+    {
+        get => _task?.ToString() ?? "";
+        set => _task = Guid.TryParse(value, out var id) ? id : null;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _lookups = (await GetLookups.HandleAsync(new GetTaskLookupsQuery(IncludeDeleted: true))).Value ?? [];
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _task = TaskId ?? _task;
+        await LoadAsync(1);
+        if (ExecutionId is { } id)
+        {
+            await OpenAsync(id);
+        }
+    }
+
+    private ExecutionFilter Filter() => new(Display.ToUtc(_from), Display.ToUtc(_to), _task, _status, _trigger);
+
+    private async Task LoadAsync(int pageNumber)
+    {
+        var result = await Search.HandleAsync(new SearchExecutionsQuery(Filter(), new PageRequest(pageNumber)));
+        _failed = result.IsFailure ? result : null;
+        _page = result.Value ?? _page;
+    }
+
+    private async Task OpenAsync(Guid id)
+    {
+        var result = await GetDetail.HandleAsync(new GetExecutionDetailQuery(id));
+        if (result.IsSuccess)
+        {
+            _detail = result.Value;
+        }
+        else
+        {
+            Toasts.Error(result.Error!.Message);
+        }
+    }
+
+    private void CloseDetail()
+    {
+        _detail = null;
+        if (ExecutionId is not null)
+        {
+            Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("id", (string?)null), replace: true);
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        _exporting = true;
+        try
+        {
+            var result = await Export.HandleAsync(new ExportExecutionsQuery(Filter()));
+            if (result.IsFailure)
+            {
+                Toasts.Error(result.Error!.Message);
+                return;
+            }
+
+            var path = await Files.SaveAsync(result.Value!.FileName, result.Value.Content);
+            Toasts.Success($"Saved to {path}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Toasts.Error("The file could not be saved: " + ex.Message);
+        }
+        finally
+        {
+            _exporting = false;
+        }
+    }
+
+    private static string LevelTone(SchedulerLogLevel level) => level switch
+    {
+        SchedulerLogLevel.Error => "danger",
+        SchedulerLogLevel.Warning => "warning",
+        _ => "info"
+    };
+}

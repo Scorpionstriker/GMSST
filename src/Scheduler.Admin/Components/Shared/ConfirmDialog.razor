@@ -1,0 +1,50 @@
+@* Asks before an action that deletes, cancels or overwrites (FR-63). With RequiredWord, the user has to type it,
+   which is how a restore is confirmed (FR-72). *@
+@if (Visible)
+{
+    <div class="modal-backdrop" @onclick="CancelAsync">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title" @onclick:stopPropagation="true">
+            <h2 id="confirm-title">@Title</h2>
+            <div>@ChildContent</div>
+            @if (RequiredWord is not null)
+            {
+                <div class="field">
+                    <label for="confirm-word">Type <strong>@RequiredWord</strong> to confirm</label>
+                    <input id="confirm-word" @bind="_typed" @bind:event="oninput" autocomplete="off" />
+                </div>
+            }
+            <div class="actions">
+                <button class="btn @(Danger ? "btn-danger" : "btn-primary")" disabled="@(!CanConfirm || Busy)" @onclick="ConfirmAsync">@ConfirmText</button>
+                <button class="btn" @onclick="CancelAsync" disabled="@Busy">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _typed = "";
+
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string Title { get; set; } = "Are you sure?";
+    [Parameter] public string ConfirmText { get; set; } = "Confirm";
+    [Parameter] public bool Danger { get; set; } = true;
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? RequiredWord { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback<string> Confirmed { get; set; }
+    [Parameter] public EventCallback Cancelled { get; set; }
+
+    private bool CanConfirm => RequiredWord is null || _typed.Trim() == RequiredWord;
+
+    protected override void OnParametersSet()
+    {
+        if (!Visible)
+        {
+            _typed = "";
+        }
+    }
+
+    private Task ConfirmAsync() => Confirmed.InvokeAsync(_typed.Trim());
+
+    private Task CancelAsync() => Busy ? Task.CompletedTask : Cancelled.InvokeAsync();
+}

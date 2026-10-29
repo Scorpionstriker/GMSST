@@ -1,73 +1,47 @@
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">Generic System Scheduler</a>
-    </div>
-</div>
+@implements IDisposable
+@inject ICurrentUser CurrentUser
+@inject IEnumerable<ISchedulerModule> Modules
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
-
-@* Persistent menu (FR-54). Module entries come from ModuleCatalog, so removing a module removes its menu items (FR-41). *@
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Dashboard
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="tasks">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Tasks
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="queue">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Queue
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="executions">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Execution History
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="errors">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Error Log
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="reports">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Reports
-            </NavLink>
-        </div>
-
-        @foreach (var item in ModuleCatalog.Modules.SelectMany(m => m.MenuItems))
+@* Menu grouped by purpose (FR-55). Administrator-only entries are hidden from Viewers (FR-49); modules add their
+   own entries, which disappear when the module is removed (FR-41). *@
+<nav class="sidebar no-print" aria-label="Main menu">
+    <div class="brand">Generic System Scheduler<small>Administration</small></div>
+    @foreach (var group in Groups())
+    {
+        <div class="nav-group">@group.Key</div>
+        @foreach (var item in group)
         {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="@item.Route.TrimStart('/')">
-                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> @(item.Group is null ? item.Title : $"{item.Group}: {item.Title}")
-                </NavLink>
-            </div>
+            <NavLink class="nav-link" href="@item.Route.TrimStart('/')" Match="@(item.Route == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)">@item.Title</NavLink>
         }
+    }
+</nav>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="configuration">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Configuration
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="modules">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Modules
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="backup">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Backup &amp; Restore
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="help">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Help
-            </NavLink>
-        </div>
-    </nav>
-</div>
+@code {
+    private static readonly string[] GroupOrder = ["Overview", "Scheduling", "Monitoring", "Administration", "Account", "Help"];
+
+    private static readonly ModuleMenuItem[] CoreItems =
+    [
+        new("Dashboard", "/", "Overview"),
+        new("Tasks", "/tasks", "Scheduling"),
+        new("Queue", "/queue", "Scheduling"),
+        new("Execution history", "/executions", "Monitoring"),
+        new("Error log", "/errors", "Monitoring"),
+        new("Reports", "/reports", "Monitoring"),
+        new("Configuration", "/configuration", "Administration", AdministratorOnly: true),
+        new("Modules", "/modules", "Administration"),
+        new("Backup and restore", "/backup", "Administration", AdministratorOnly: true),
+        new("Help", "/help", "Help")
+    ];
+
+    private IEnumerable<IGrouping<string, ModuleMenuItem>> Groups() =>
+        CoreItems.Concat(Modules.SelectMany(m => m.MenuItems.Select(i => i with { Group = i.Group ?? m.Name })))
+            .Where(i => !i.AdministratorOnly || CurrentUser.IsAdministrator)
+            .GroupBy(i => i.Group!)
+            .OrderBy(g => Array.IndexOf(GroupOrder, g.Key) is var index and >= 0 ? index : 2.5); // module groups after Monitoring
+
+    protected override void OnInitialized() => CurrentUser.Changed += OnUserChanged;
+
+    private void OnUserChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => CurrentUser.Changed -= OnUserChanged;
+}

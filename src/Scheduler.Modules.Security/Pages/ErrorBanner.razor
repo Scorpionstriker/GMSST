@@ -1,0 +1,8 @@
+@if (Result is { Succeeded: false, Field: null })
+{
+    <div class="banner banner-error" role="alert">@Result.Error</div>
+}
+
+@code {
+    [Parameter] public UserActionResult? Result { get; set; }
+}

@@ -1,0 +1,21 @@
+@typeparam TItem
+
+@if (Page is { TotalCount: > 0 })
+{
+    <div class="pager no-print">
+        <span class="muted">@First–@Last of @Page.TotalCount</span>
+        <button class="btn btn-small" disabled="@(!Page.HasPrevious)" @onclick="() => Changed.InvokeAsync(Page.Page - 1)">Previous</button>
+        <span>Page @Page.Page of @Page.PageCount</span>
+        <button class="btn btn-small" disabled="@(!Page.HasNext)" @onclick="() => Changed.InvokeAsync(Page.Page + 1)">Next</button>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public PagedResult<TItem>? Page { get; set; }
+
+    [Parameter] public EventCallback<int> Changed { get; set; }
+
+    private int First => (Page!.Page - 1) * Page.PageSize + 1;
+
+    private int Last => First + Page!.Items.Count - 1;
+}

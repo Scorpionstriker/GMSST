@@ -1,0 +1,10 @@
+@* The validation message beneath a form field (FR-74). *@
+@if (Result?.MessageFor(Field) is { } message)
+{
+    <span class="field-error" role="alert">@message</span>
+}
+
+@code {
+    [Parameter] public Result? Result { get; set; }
+    [Parameter, EditorRequired] public string Field { get; set; } = "";
+}

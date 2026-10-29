@@ -1,4 +1,140 @@
 @page "/backup"
+@using Scheduler.Application.Backup
+@inject IQueryHandler<GetBackupsQuery, BackupOverview> GetBackups
+@inject ICommandHandler<CreateBackupCommand, BackupInfo> CreateBackup
+@inject ICommandHandler<RestoreBackupCommand, Unit> RestoreBackup
+@inject ToastService Toasts
 
-<h1>Backup &amp; Restore</h1>
-<p>On-demand backup, backup list with verification results, and restore (FR-67 to FR-72).</p>
+<div class="page-header">
+    <h1>Backup and restore</h1>
+    <button class="btn btn-primary" @onclick="BackUpAsync" disabled="@(_busy is not null)">@(_busy == "backup" ? "Backing up…" : "Back up now")</button>
+</div>
+
+<ErrorBanner Result="_failed" />
+
+@if (_overview is { } o)
+{
+    <p class="muted">
+        Backups are full PostgreSQL backups, checked after they are written and recorded with a checksum.
+        The Database Backup task makes one every night. The newest @o.RetentionCount are kept; safety backups made before a
+        restore or an upgrade are kept for seven days.
+    </p>
+    <p class="hint">Folder: <span class="mono">@o.Folder</span></p>
+
+    <div class="card table-wrap">
+        @if (o.Backups.Count == 0)
+        {
+            <p>There are no backups yet. Select Back up now to make the first one.</p>
+        }
+        else
+        {
+            <table class="table">
+                <thead><tr><th>File</th><th>Made</th><th>Kind</th><th class="num">Size</th><th>Checked</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var backup in o.Backups)
+                    {
+                        <tr>
+                            <td class="mono">@backup.FileName</td>
+                            <td>@Display.Time(backup.CreatedAtUtc)</td>
+                            <td>@Display.Words(backup.Kind)</td>
+                            <td class="num">@Display.Bytes(backup.SizeBytes)</td>
+                            <td>
+                                @if (backup.Verified)
+                                {
+                                    <StatusBadge Text="Verified" Tone="success" />
+                                }
+                                else
+                                {
+                                    <StatusBadge Text="Not verified" Tone="danger" />
+                                }
+                            </td>
+                            <td class="row-actions">
+                                <button class="btn btn-small" disabled="@(_busy is not null)" @onclick="() => _restoring = backup">Restore…</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+else if (_failed is null)
+{
+    <p class="muted">Loading…</p>
+}
+
+@* A restore replaces every scheduler table, so it needs the typed word RESTORE (FR-72). *@
+<ConfirmDialog Visible="_restoring is not null" Title="Restore this backup?" ConfirmText="Restore" RequiredWord="@RestoreBackupCommand.ConfirmationWord"
+               Busy="@(_busy == "restore")" Confirmed="RestoreAsync" Cancelled="() => _restoring = null">
+    <p>All scheduler data will be replaced by the backup <span class="mono">@_restoring?.FileName</span>
+        from @Display.Time(_restoring?.CreatedAtUtc). Changes made since then are lost.</p>
+    <p>Before restoring, the engine is paused and a safety backup of the current data is made. If the restore fails, the current data is left unchanged.</p>
+    @if (_busy == "restore")
+    {
+        <p><strong>Restoring… this can take a few minutes.</strong></p>
+    }
+</ConfirmDialog>
+
+@code {
+    private BackupOverview? _overview;
+    private Result? _failed;
+    private string? _busy;
+    private BackupInfo? _restoring;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var result = await GetBackups.HandleAsync(new GetBackupsQuery());
+        _failed = result.IsFailure ? result : null;
+        _overview = result.Value;
+    }
+
+    private async Task BackUpAsync()
+    {
+        _busy = "backup";
+        try
+        {
+            var result = await CreateBackup.HandleAsync(new CreateBackupCommand());
+            if (result.IsSuccess)
+            {
+                Toasts.Success($"Backup {result.Value!.FileName} ({Display.Bytes(result.Value.SizeBytes)}) was made and verified.");
+            }
+            else
+            {
+                Toasts.Error(result.Error!.Message);
+            }
+
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = null;
+        }
+    }
+
+    private async Task RestoreAsync(string typed)
+    {
+        var backup = _restoring!;
+        _busy = "restore";
+        try
+        {
+            var result = await RestoreBackup.HandleAsync(new RestoreBackupCommand(backup.FileName, typed));
+            if (result.IsSuccess)
+            {
+                Toasts.Success($"The data was restored from {backup.FileName}. The engine has resumed.");
+            }
+            else
+            {
+                Toasts.Error(result.Error!.Message);
+            }
+
+            _restoring = null;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = null;
+        }
+    }
+}

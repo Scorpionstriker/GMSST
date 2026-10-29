@@ -1,0 +1,525 @@
+@page "/tasks/new"
+@page "/tasks/{TaskId:guid}"
+@using Scheduler.Application.Tasks
+@using Scheduler.Application.Cron
+@inject IQueryHandler<GetTaskQuery, TaskDetails> GetTask
+@inject IQueryHandler<GetTaskTypesQuery, IReadOnlyList<TaskTypeInfo>> GetTaskTypes
+@inject IQueryHandler<GetTaskLookupsQuery, IReadOnlyList<TaskLookup>> GetLookups
+@inject IQueryHandler<PreviewScheduleQuery, IReadOnlyList<PreviewRun>> Preview
+@inject ICommandHandler<CreateTaskCommand, Guid> Create
+@inject ICommandHandler<UpdateTaskCommand, Unit> Update
+@inject ICommandHandler<RunTaskNowCommand, Guid> RunNow
+@inject ICommandHandler<ChangeTaskStatusCommand, Unit> ChangeStatus
+@inject ICommandHandler<DeleteTaskCommand, Unit> Delete
+@inject ICommandHandler<RestoreTaskCommand, Unit> Restore
+@inject ICurrentUser CurrentUser
+@inject ToastService Toasts
+@inject NavigationManager Navigation
+
+<div class="page-header">
+    <h1>@(IsNew ? "New task" : _form.Name)</h1>
+    @if (_details is { } d)
+    {
+        <div class="actions">
+            @if (d.IsDeleted)
+            {
+                <StatusBadge Text="Deleted" Tone="muted" />
+            }
+            else
+            {
+                <StatusBadge Value="d.Status" />
+            }
+            @if (CurrentUser.IsAdministrator)
+            {
+                @if (d.IsDeleted)
+                {
+                    <button class="btn" @onclick="RestoreAsync">Restore</button>
+                }
+                else
+                {
+                    <button class="btn" disabled="@(d.Status == ScheduledTaskStatus.Disabled)" @onclick="RunNowAsync">Run now</button>
+                    @if (d.Status == ScheduledTaskStatus.Active)
+                    {
+                        <button class="btn" @onclick="() => SetStatusAsync(ScheduledTaskStatus.Paused)">Pause</button>
+                        <button class="btn" @onclick="() => SetStatusAsync(ScheduledTaskStatus.Disabled)">Disable</button>
+                    }
+                    else
+                    {
+                        <button class="btn" @onclick="() => SetStatusAsync(ScheduledTaskStatus.Active)">Resume</button>
+                    }
+                    <button class="btn btn-danger" @onclick="() => _confirmDelete = true">Delete</button>
+                }
+            }
+            <a class="btn" href="executions?taskId=@d.Id">History</a>
+        </div>
+    }
+</div>
+
+@if (_loadError is not null)
+{
+    <ErrorBanner Message="@_loadError" />
+    <a class="btn" href="tasks">Back to tasks</a>
+}
+else if (!_loaded)
+{
+    <p class="muted">Loading…</p>
+}
+else
+{
+    @if (_details is { } info)
+    {
+        <p class="muted">
+            Created @Display.Time(info.CreatedAtUtc) · last changed @Display.Time(info.UpdatedAtUtc ?? info.CreatedAtUtc)
+            · next run @(info.Status == ScheduledTaskStatus.Active && !info.IsDeleted ? Display.Time(info.NextRunUtc) : Display.Empty)
+            · last run @Display.Time(info.LastRunUtc)
+        </p>
+    }
+    @if (ReadOnly && !CurrentUser.IsAdministrator)
+    {
+        <div class="banner banner-info">You can view this task. Only an administrator can change it.</div>
+    }
+
+    <ErrorBanner Result="_result" FieldsShown="true" />
+
+    @* Every field of the task editor (Table 6.1) with its message beneath it (FR-74). Required fields are marked. *@
+    <form @onsubmit="SaveAsync">
+        <fieldset disabled="@ReadOnly">
+            <legend>Task</legend>
+            <div class="form-grid">
+                <div class="field">
+                    <label for="name" class="required">Name</label>
+                    <input id="name" @bind="_form.Name" maxlength="100" class="@Invalid(TaskFields.Name)" />
+                    <FieldError Result="_result" Field="@TaskFields.Name" />
+                </div>
+                <div class="field">
+                    <label for="type" class="required">Task type</label>
+                    <select id="type" @bind="_form.TaskType" class="@Invalid(TaskFields.TaskType)">
+                        <option value="">Select a task type…</option>
+                        @foreach (var type in _types)
+                        {
+                            <option value="@type.TaskType">@type.DisplayName (@type.TaskType)</option>
+                        }
+                        @if (!string.IsNullOrEmpty(_form.TaskType) && _types.All(t => t.TaskType != _form.TaskType))
+                        {
+                            <option value="@_form.TaskType">@_form.TaskType (not available on this host)</option>
+                        }
+                    </select>
+                    @if (SelectedType?.Description is { } description)
+                    {
+                        <span class="hint">@description</span>
+                    }
+                    <FieldError Result="_result" Field="@TaskFields.TaskType" />
+                </div>
+            </div>
+            <div class="field">
+                <label for="description">Description</label>
+                <textarea id="description" rows="2" @bind="_form.Description" maxlength="1000"></textarea>
+                <FieldError Result="_result" Field="@TaskFields.Description" />
+            </div>
+            <div class="field">
+                <label for="payload">Payload (JSON)</label>
+                <textarea id="payload" class="code @Invalid(TaskFields.Payload)" @bind="_form.Payload" spellcheck="false"></textarea>
+                <span class="hint">
+                    Settings passed to the task when it runs.
+                    @if (SelectedType?.PayloadExample is { } example)
+                    {
+                        <button type="button" class="btn-link" @onclick="() => _form.Payload = example">Use the example for this task type</button>
+                    }
+                </span>
+                <FieldError Result="_result" Field="@TaskFields.Payload" />
+            </div>
+            <div class="form-grid">
+                <div class="field">
+                    <label for="priority">Priority (1 = lowest, 10 = highest)</label>
+                    <input id="priority" type="number" min="1" max="10" @bind="_form.Priority" class="@Invalid(TaskFields.Priority)" />
+                    <FieldError Result="_result" Field="@TaskFields.Priority" />
+                </div>
+                <div class="field">
+                    <label for="retries">Retries after a failure</label>
+                    <input id="retries" type="number" min="0" max="10" @bind="_form.MaxRetries" placeholder="Global setting" class="@Invalid(TaskFields.MaxRetries)" />
+                    <span class="hint">Leave empty to use the global MaxRetryLimit.</span>
+                    <FieldError Result="_result" Field="@TaskFields.MaxRetries" />
+                </div>
+                <div class="field">
+                    <label for="timeout">Time-out (seconds)</label>
+                    <input id="timeout" type="number" min="1" max="86400" @bind="_form.TimeoutSeconds" class="@Invalid(TaskFields.TimeoutSeconds)" />
+                    <FieldError Result="_result" Field="@TaskFields.TimeoutSeconds" />
+                </div>
+            </div>
+        </fieldset>
+
+        <fieldset disabled="@ReadOnly">
+            <legend>Schedule</legend>
+            <div class="field">
+                <span>Run</span>
+                <div class="segmented" role="group" aria-label="Schedule type">
+                    <button type="button" class="btn @(_form.Type == ScheduleType.Cron ? "selected" : "")" @onclick="() => SetType(ScheduleType.Cron)">On a cron schedule</button>
+                    <button type="button" class="btn @(_form.Type == ScheduleType.Interval ? "selected" : "")" @onclick="() => SetType(ScheduleType.Interval)">Every interval</button>
+                    <button type="button" class="btn @(_form.Type == ScheduleType.Once ? "selected" : "")" @onclick="() => SetType(ScheduleType.Once)">Once</button>
+                </div>
+                <FieldError Result="_result" Field="@TaskFields.ScheduleType" />
+            </div>
+
+            <div class="form-grid">
+                @if (_form.Type == ScheduleType.Cron)
+                {
+                    <div class="field">
+                        <label for="cron" class="required">Cron expression</label>
+                        <input id="cron" class="mono @Invalid(TaskFields.CronExpression)" @bind="_form.CronExpression" @bind:after="ScheduleChanged"
+                               placeholder="0 2 * * *" spellcheck="false" />
+                        <span class="hint">minute hour day-of-month month day-of-week, for example <code>0 2 * * *</code> is every day at 02:00. See Help.</span>
+                        <FieldError Result="_result" Field="@TaskFields.CronExpression" />
+                    </div>
+                }
+                else if (_form.Type == ScheduleType.Interval)
+                {
+                    <div class="field">
+                        <label for="interval" class="required">Every</label>
+                        <div class="actions" style="margin-top:0">
+                            <input id="interval" type="number" min="1" style="width:7rem" @bind="_form.IntervalValue" @bind:after="ScheduleChanged"
+                                   class="@Invalid(TaskFields.IntervalSeconds)" />
+                            <select @bind="_form.IntervalUnit" @bind:after="ScheduleChanged" aria-label="Interval unit">
+                                <option value="1">seconds</option>
+                                <option value="60">minutes</option>
+                                <option value="3600">hours</option>
+                                <option value="86400">days</option>
+                            </select>
+                        </div>
+                        <FieldError Result="_result" Field="@TaskFields.IntervalSeconds" />
+                    </div>
+                }
+                <div class="field">
+                    <label for="zone">Time zone</label>
+                    <select id="zone" @bind="_form.TimeZoneId" @bind:after="ScheduleChanged" class="@Invalid(TaskFields.TimeZoneId)">
+                        @foreach (var zone in _zones)
+                        {
+                            <option value="@zone.Id">@zone.Label</option>
+                        }
+                    </select>
+                    <FieldError Result="_result" Field="@TaskFields.TimeZoneId" />
+                </div>
+                <div class="field">
+                    <label for="start" class="@(_form.Type == ScheduleType.Once ? "required" : "")">@(_form.Type == ScheduleType.Once ? "Run at" : "Start")</label>
+                    <input id="start" type="datetime-local" step="1" @bind="_form.StartTime" @bind:after="ScheduleChanged" class="@Invalid(TaskFields.StartTime)" />
+                    @if (_form.Type != ScheduleType.Once)
+                    {
+                        <span class="hint">Optional. Empty means from now.</span>
+                    }
+                    <FieldError Result="_result" Field="@TaskFields.StartTime" />
+                </div>
+                @if (_form.Type != ScheduleType.Once)
+                {
+                    <div class="field">
+                        <label for="end">End</label>
+                        <input id="end" type="datetime-local" step="1" @bind="_form.EndTime" @bind:after="ScheduleChanged" class="@Invalid(TaskFields.EndTime)" />
+                        <span class="hint">Optional. No runs after this time.</span>
+                        <FieldError Result="_result" Field="@TaskFields.EndTime" />
+                    </div>
+                    <div class="field">
+                        <label for="misfire">If runs were missed</label>
+                        <select id="misfire" @bind="_form.MisfirePolicy" @bind:after="ScheduleChanged">
+                            <option value="@MisfirePolicy.RunOnce">Run once to catch up</option>
+                            <option value="@MisfirePolicy.Skip">Skip them</option>
+                            <option value="@MisfirePolicy.RunAll">Run every missed run</option>
+                        </select>
+                        <span class="hint">For example after the computer was switched off.</span>
+                    </div>
+                }
+            </div>
+
+            @* The next run times before saving, in the schedule's own time zone (FR-16). *@
+            <div class="field">
+                <span>Next runs</span>
+                @if (_previewError is not null)
+                {
+                    <span class="hint">@_previewError</span>
+                }
+                else if (_preview.Count == 0)
+                {
+                    <span class="hint">No future runs for this schedule.</span>
+                }
+                else
+                {
+                    <ol class="mono" style="margin:0">
+                        @foreach (var run in _preview)
+                        {
+                            <li>@run.Local.ToString("ddd yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) <span class="hint">(@Display.Time(run.Utc) your time)</span></li>
+                        }
+                    </ol>
+                }
+            </div>
+        </fieldset>
+
+        <fieldset disabled="@ReadOnly">
+            <legend>Runs after</legend>
+            <p class="hint">This task is queued each time all of the selected tasks have succeeded. Leave empty for none.</p>
+            @{ var candidates = _lookups.Where(t => t.Id != TaskId && !t.IsDeleted).ToList(); }
+            @if (candidates.Count == 0)
+            {
+                <p class="muted">There are no other tasks yet.</p>
+            }
+            else
+            {
+                <div class="picker @Invalid(TaskFields.DependsOn)">
+                    @foreach (var other in candidates)
+                    {
+                        <div class="field checkbox" style="margin-bottom:.25rem">
+                            <label>
+                                <input type="checkbox" checked="@_form.DependsOn.Contains(other.Id)" @onchange="e => ToggleDependency(other.Id, e)" />
+                                @other.Name <span class="hint">@other.TaskType · @other.Status</span>
+                            </label>
+                        </div>
+                    }
+                </div>
+            }
+            <FieldError Result="_result" Field="@TaskFields.DependsOn" />
+        </fieldset>
+
+        @if (!ReadOnly)
+        {
+            <div class="actions">
+                <button class="btn btn-primary" type="submit" disabled="@_saving">@(_saving ? "Saving…" : IsNew ? "Create task" : "Save changes")</button>
+                <a class="btn" href="tasks">Cancel</a>
+            </div>
+        }
+    </form>
+}
+
+<ConfirmDialog Visible="_confirmDelete" Title="Delete task?" ConfirmText="Delete task" Confirmed="DeleteAsync" Cancelled="() => _confirmDelete = false">
+    <p>Delete <strong>@_form.Name</strong>? It stops running and its waiting queue entries are cancelled. The history is kept and the task can be restored.</p>
+</ConfirmDialog>
+
+@code {
+    [Parameter] public Guid? TaskId { get; set; }
+
+    private readonly TaskForm _form = new();
+    private TaskDetails? _details;
+    private ScheduleInput? _loadedSchedule;
+    private bool _scheduleTouched;
+    private IReadOnlyList<TaskTypeInfo> _types = [];
+    private IReadOnlyList<TaskLookup> _lookups = [];
+    private IReadOnlyList<TimeZoneOption> _zones = [];
+    private IReadOnlyList<PreviewRun> _preview = [];
+    private string? _previewError;
+    private Result? _result;
+    private string? _loadError;
+    private bool _loaded;
+    private bool _saving;
+    private bool _confirmDelete;
+
+    private bool IsNew => TaskId is null;
+
+    private bool ReadOnly => !CurrentUser.IsAdministrator || _details?.IsDeleted == true;
+
+    private TaskTypeInfo? SelectedType => _types.FirstOrDefault(t => t.TaskType == _form.TaskType);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loaded = false;
+        _result = null;
+        _types = (await GetTaskTypes.HandleAsync(new GetTaskTypesQuery())).Value ?? [];
+        _lookups = (await GetLookups.HandleAsync(new GetTaskLookupsQuery())).Value ?? [];
+        _zones = TimeZones.All(DateTime.UtcNow);
+
+        if (TaskId is { } id)
+        {
+            var result = await GetTask.HandleAsync(new GetTaskQuery(id));
+            if (result.IsFailure)
+            {
+                _loadError = result.Error!.Message;
+                return;
+            }
+
+            _details = result.Value!;
+            _loadedSchedule = _details.Input.Schedule;
+            _form.Load(_details.Input);
+        }
+        else
+        {
+            _details = null;
+            _loadedSchedule = null;
+            _form.Load(new TaskInput { Schedule = new ScheduleInput { TimeZoneId = TimeZones.LocalId() } });
+        }
+
+        _scheduleTouched = false;
+        _loaded = true;
+        await RefreshPreviewAsync();
+    }
+
+    private void SetType(ScheduleType type)
+    {
+        _form.Type = type;
+        _ = ScheduleChanged();
+    }
+
+    private async Task ScheduleChanged()
+    {
+        _scheduleTouched = true;
+        await RefreshPreviewAsync();
+    }
+
+    private async Task RefreshPreviewAsync()
+    {
+        var result = await Preview.HandleAsync(new PreviewScheduleQuery(CurrentSchedule()));
+        _preview = result.Value ?? [];
+        _previewError = result.IsFailure ? "Complete the schedule to see its next runs: " + result.Error!.Message : null;
+        StateHasChanged();
+    }
+
+    // An unchanged schedule is sent exactly as it was loaded, so saving other fields does not reset it.
+    private ScheduleInput CurrentSchedule() => !_scheduleTouched && _loadedSchedule is not null ? _loadedSchedule : _form.ToSchedule();
+
+    private void ToggleDependency(Guid id, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+        {
+            _form.DependsOn.Add(id);
+        }
+        else
+        {
+            _form.DependsOn.Remove(id);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        try
+        {
+            var input = _form.ToInput(CurrentSchedule());
+            if (TaskId is { } id)
+            {
+                var result = await Update.HandleAsync(new UpdateTaskCommand(id, _details!.Version, input));
+                _result = result;
+                if (result.IsSuccess)
+                {
+                    Toasts.Success($"'{input.Name}' has been saved.");
+                    await OnParametersSetAsync();
+                }
+            }
+            else
+            {
+                var result = await Create.HandleAsync(new CreateTaskCommand(input));
+                _result = result;
+                if (result.IsSuccess)
+                {
+                    Toasts.Success($"'{input.Name}' has been created.");
+                    Navigation.NavigateTo($"tasks/{result.Value}");
+                }
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task RunNowAsync() => await Report(await RunNow.HandleAsync(new RunTaskNowCommand(TaskId!.Value)), "The task has been queued and will start shortly.");
+
+    private async Task SetStatusAsync(ScheduledTaskStatus status) =>
+        await Report(await ChangeStatus.HandleAsync(new ChangeTaskStatusCommand(TaskId!.Value, status)), $"The task is now {status.ToString().ToLowerInvariant()}.");
+
+    private async Task DeleteAsync()
+    {
+        _confirmDelete = false;
+        var result = await Delete.HandleAsync(new DeleteTaskCommand(TaskId!.Value));
+        if (result.IsSuccess)
+        {
+            Toasts.Success($"'{_form.Name}' has been deleted.");
+            Navigation.NavigateTo("tasks");
+        }
+        else
+        {
+            Toasts.Error(result.Error!.Message);
+        }
+    }
+
+    private async Task RestoreAsync() => await Report(await Restore.HandleAsync(new RestoreTaskCommand(TaskId!.Value)), "The task has been restored.");
+
+    private async Task Report(Result result, string success)
+    {
+        if (result.IsSuccess)
+        {
+            Toasts.Success(success);
+            await OnParametersSetAsync();
+        }
+        else
+        {
+            Toasts.Error(result.Error!.Message);
+        }
+    }
+
+    private string Invalid(string field) => _result?.MessageFor(field) is null ? "" : "invalid";
+
+    /// <summary>The editable copy of <see cref="TaskInput"/>; the record itself is immutable.</summary>
+    private sealed class TaskForm
+    {
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public string TaskType { get; set; } = "";
+        public string Payload { get; set; } = "{}";
+        public int Priority { get; set; }
+        public int? MaxRetries { get; set; }
+        public int TimeoutSeconds { get; set; }
+        public ScheduleType Type { get; set; }
+        public string? CronExpression { get; set; }
+        public int? IntervalValue { get; set; }
+        public int IntervalUnit { get; set; } = 60;
+        public string TimeZoneId { get; set; } = "UTC";
+        public MisfirePolicy MisfirePolicy { get; set; }
+        public DateTime? StartTime { get; set; }
+        public DateTime? EndTime { get; set; }
+        public HashSet<Guid> DependsOn { get; } = [];
+
+        public void Load(TaskInput input)
+        {
+            Name = input.Name;
+            Description = input.Description;
+            TaskType = input.TaskType;
+            Payload = input.Payload;
+            Priority = input.Priority;
+            MaxRetries = input.MaxRetries;
+            TimeoutSeconds = input.TimeoutSeconds;
+            var s = input.Schedule;
+            Type = s.Type;
+            CronExpression = s.CronExpression;
+            TimeZoneId = s.TimeZoneId;
+            MisfirePolicy = s.MisfirePolicy;
+            StartTime = s.StartTime;
+            EndTime = s.EndTime;
+            IntervalUnit = new[] { 86400, 3600, 60, 1 }.First(unit => s.IntervalSeconds is not { } seconds || seconds % unit == 0);
+            IntervalValue = s.IntervalSeconds / IntervalUnit;
+            if (s.IntervalSeconds is null)
+            {
+                IntervalUnit = 60;
+            }
+
+            DependsOn.Clear();
+            DependsOn.UnionWith(input.DependsOn);
+        }
+
+        public ScheduleInput ToSchedule() => new()
+        {
+            Type = Type,
+            CronExpression = Type == ScheduleType.Cron ? CronExpression?.Trim() : null,
+            IntervalSeconds = Type == ScheduleType.Interval ? IntervalValue * IntervalUnit : null,
+            TimeZoneId = TimeZoneId,
+            MisfirePolicy = MisfirePolicy,
+            StartTime = StartTime,
+            EndTime = Type == ScheduleType.Once ? null : EndTime
+        };
+
+        public TaskInput ToInput(ScheduleInput schedule) => new()
+        {
+            Name = Name.Trim(),
+            Description = string.IsNullOrWhiteSpace(Description) ? null : Description.Trim(),
+            TaskType = TaskType,
+            Payload = string.IsNullOrWhiteSpace(Payload) ? "{}" : Payload,
+            Priority = Priority,
+            MaxRetries = MaxRetries,
+            TimeoutSeconds = TimeoutSeconds,
+            Schedule = schedule,
+            DependsOn = DependsOn.ToList()
+        };
+    }
+}

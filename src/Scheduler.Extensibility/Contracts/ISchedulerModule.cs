@@ -12,10 +12,19 @@ public interface ISchedulerModule
     /// <summary>Display name shown on the Modules page (FR-60).</summary>
     string Name { get; }
 
+    /// <summary>One sentence describing the module on the Modules page.</summary>
+    string? Description => null;
+
     /// <summary>Menu entries this module adds to the Admin application. Empty for headless modules.</summary>
     IReadOnlyList<ModuleMenuItem> MenuItems { get; }
 
     void Register(IServiceCollection services);
+
+    /// <summary>
+    /// Runs once at start-up, after the scheduler database is ready and before the engine starts. Use it
+    /// to apply the module's own migrations or to create its tasks through <see cref="ISchedulerClient"/>.
+    /// </summary>
+    Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 /// <summary>A menu entry contributed by a module. Pages are discovered from the module's assembly.</summary>

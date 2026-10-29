@@ -1,4 +1,192 @@
 @page "/"
+@using Scheduler.Application.Reports
+@using Scheduler.Application.Executions
+@implements IDisposable
+@inject IQueryHandler<GetDashboardQuery, DashboardData> GetDashboard
+@inject ISchedulerEvents Events
+@inject SchedulerHost Host
+@inject ICurrentUser CurrentUser
+@inject ToastService Toasts
+@inject NavigationManager Navigation
 
-<h1>Dashboard</h1>
-<p>Next scheduled run, task counts, 24-hour success and failure figures, busy workers, charts and recent executions (FR-56, FR-57).</p>
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <div class="actions">
+        @if (CurrentUser.IsAdministrator)
+        {
+            @if (Host.Engine.State == EngineState.Running)
+            {
+                <button class="btn" @onclick="PauseAsync" disabled="@_busy">Pause engine</button>
+            }
+            else if (Host.Engine.State == EngineState.Paused)
+            {
+                <button class="btn btn-primary" @onclick="ResumeAsync" disabled="@_busy">Resume engine</button>
+            }
+        }
+        <button class="btn" @onclick="LoadAsync">Refresh</button>
+    </div>
+</div>
+
+<ErrorBanner Result="_failed" />
+
+@if (_data is { } d)
+{
+    <div class="card-grid">
+        <div class="card stat">
+            <span class="stat-label">Engine</span>
+            <span class="stat-value small"><StatusBadge Value="Host.Engine.State" /></span>
+            <span class="muted">@d.BusyWorkers of @d.RunningWorkers workers busy</span>
+        </div>
+        <div class="card stat">
+            <span class="stat-label">Next run</span>
+            <span class="stat-value small">@(d.NextRunTaskName ?? "Nothing scheduled")</span>
+            <span class="muted">@Display.Time(d.NextRunUtc) @(d.NextRunUtc is null ? "" : $"({Display.Relative(d.NextRunUtc, DateTime.UtcNow)})")</span>
+        </div>
+        <div class="card stat">
+            <span class="stat-label">Tasks</span>
+            <span class="stat-value">@d.TotalTasks</span>
+            <span class="muted">@d.ActiveTasks active · @d.PausedTasks paused</span>
+        </div>
+        <div class="card stat">
+            <span class="stat-label">Succeeded (24 h)</span>
+            <span class="stat-value">@d.Succeeded24h</span>
+            <span class="muted">Success rate @SuccessRate(d)</span>
+        </div>
+        <div class="card stat">
+            <span class="stat-label">Failed (24 h)</span>
+            <span class="stat-value">@d.Failed24h</span>
+            <a href="errors">Open the error log</a>
+        </div>
+        <div class="card stat">
+            <span class="stat-label">Waiting in queue</span>
+            <span class="stat-value">@d.WaitingInQueue</span>
+            <span class="muted">Average run @Display.Duration(d.AverageDurationMs24h)</span>
+        </div>
+    </div>
+
+    <div class="two-columns">
+        <div class="card">
+            <h2>Runs in the last 24 hours</h2>
+            <BarChart Chart="HourlyChart(d)" />
+        </div>
+        <div class="card">
+            <h2>Average duration per hour</h2>
+            <LineChart Title="Average duration per hour" Labels="HourLabels(d)" Values="@(d.Hourly.Select(h => h.AverageDurationMs).ToList())"
+                       Format="v => Display.Duration(v)" />
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Recent executions</h2>
+        @if (d.Recent.Count == 0)
+        {
+            <p class="muted">No task has run yet. Create a task on the Tasks page, or use Run now on an existing one.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>Task</th><th>Status</th><th>Trigger</th><th>Started</th><th class="num">Duration</th><th class="num">Retry</th></tr></thead>
+                    <tbody>
+                        @foreach (var e in d.Recent)
+                        {
+                            <tr class="clickable" @onclick="@(() => Navigation.NavigateTo($"executions?id={e.Id}"))">
+                                <td>@e.TaskName</td>
+                                <td><StatusBadge Value="e.Status" /></td>
+                                <td>@e.TriggerType</td>
+                                <td>@Display.Time(e.StartTimeUtc)</td>
+                                <td class="num">@Display.Duration(e.DurationMs)</td>
+                                <td class="num">@e.RetryCount</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+else if (_failed is null)
+{
+    <p class="muted">Loading…</p>
+}
+
+@code {
+    private DashboardData? _data;
+    private Result? _failed;
+    private bool _busy;
+    private Timer? _debounce;
+    private Timer? _refresh;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Events.TaskQueued += OnTaskEvent;
+        Events.TaskStarted += OnTaskEvent;
+        Events.TaskSucceeded += OnTaskEvent;
+        Events.TaskFailed += OnTaskEvent;
+        Events.EngineStateChanged += OnEngineEvent;
+        // Live updates come from events; a slow refresh also catches work done by other hosts.
+        _refresh = new Timer(_ => InvokeAsync(LoadAsync), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var result = await GetDashboard.HandleAsync(new GetDashboardQuery());
+        if (result.IsSuccess)
+        {
+            _data = result.Value;
+            _failed = null;
+        }
+        else
+        {
+            _failed = result;
+        }
+
+        StateHasChanged();
+    }
+
+    // Many events can arrive at once (for example a batch of runs finishing), so reloads are combined.
+    private void OnTaskEvent(object? sender, TaskLifecycleEventArgs e) =>
+        Interlocked.Exchange(ref _debounce, new Timer(_ => InvokeAsync(LoadAsync), null, 750, Timeout.Infinite))?.Dispose();
+
+    private void OnEngineEvent(object? sender, EngineStateEventArgs e) => InvokeAsync(StateHasChanged);
+
+    private async Task PauseAsync()
+    {
+        _busy = true;
+        await Host.Engine.PauseAsync();
+        _busy = false;
+        Toasts.Success("The engine is paused. Running tasks were given time to finish; nothing new will start until you resume.");
+    }
+
+    private async Task ResumeAsync()
+    {
+        _busy = true;
+        await Host.Engine.ResumeAsync();
+        _busy = false;
+        Toasts.Success("The engine is running again.");
+    }
+
+    private static string SuccessRate(DashboardData d) =>
+        d.Succeeded24h + d.Failed24h == 0 ? Display.Empty : $"{d.Succeeded24h * 100.0 / (d.Succeeded24h + d.Failed24h):0.#}%";
+
+    private static IReadOnlyList<string> HourLabels(DashboardData d) =>
+        d.Hourly.Select(h => Display.ToLocal(h.HourStartUtc).ToString("HH:00", CultureInfo.InvariantCulture)).ToList();
+
+    private static ReportChart HourlyChart(DashboardData d) => new("Runs per hour", HourLabels(d),
+    [
+        new ChartSeries("Succeeded", d.Hourly.Select(h => (double)h.Succeeded).ToList(), "series-success"),
+        new ChartSeries("Failed", d.Hourly.Select(h => (double)h.Failed).ToList(), "series-failed")
+    ]);
+
+    public void Dispose()
+    {
+        Events.TaskQueued -= OnTaskEvent;
+        Events.TaskStarted -= OnTaskEvent;
+        Events.TaskSucceeded -= OnTaskEvent;
+        Events.TaskFailed -= OnTaskEvent;
+        Events.EngineStateChanged -= OnEngineEvent;
+        _debounce?.Dispose();
+        _refresh?.Dispose();
+    }
+}

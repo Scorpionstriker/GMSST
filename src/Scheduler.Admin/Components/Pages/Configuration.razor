@@ -1,4 +1,248 @@
 @page "/configuration"
+@using Scheduler.Application.Configuration
+@using Scheduler.Application.Tasks
+@inject IQueryHandler<GetSettingsQuery, SettingsOverview> GetSettings
+@inject IQueryHandler<GetTaskLookupsQuery, IReadOnlyList<TaskLookup>> GetLookups
+@inject ICommandHandler<UpdateSettingCommand, Unit> UpdateSetting
+@inject ICommandHandler<RemoveTaskSettingCommand, Unit> RemoveTaskSetting
+@inject ICommandHandler<UpdateLoggingProviderCommand, Unit> UpdateProvider
+@inject ToastService Toasts
 
-<h1>Configuration</h1>
-<p>Global and per-task settings with validation (FR-36, FR-37).</p>
+<div class="page-header"><h1>Configuration</h1></div>
+
+<ErrorBanner Result="_failed" />
+
+@if (_overview is { } o)
+{
+    @* Every value is checked against its allowed range before it is stored (FR-37). Most changes apply within 30 seconds. *@
+    <div class="card">
+        <h2>Scheduler settings</h2>
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th>Setting</th><th>Value</th><th>Allowed</th><th>Default</th><th>Changed</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var setting in o.Global)
+                    {
+                        var definition = setting.Definition;
+                        <tr>
+                            <td>
+                                <strong>@definition.Key</strong>
+                                <div class="hint">@definition.Description @(definition.AppliesOnRestart ? "Applies after a restart." : "")</div>
+                            </td>
+                            <td style="min-width:9rem">
+                                @if (_editingKey == definition.Key)
+                                {
+                                    <input type="number" min="@definition.Min" max="@definition.Max" @bind="_editValue" style="width:7rem" aria-label="@definition.Key" />
+                                    <span class="hint">@definition.Unit</span>
+                                    @if (_editError is not null)
+                                    {
+                                        <div class="field-error">@_editError</div>
+                                    }
+                                }
+                                else
+                                {
+                                    @setting.Value <span class="hint">@definition.Unit</span>
+                                }
+                            </td>
+                            <td class="hint">@definition.Min–@definition.Max</td>
+                            <td class="hint">@definition.DefaultValue</td>
+                            <td class="hint">@Display.ShortTime(setting.UpdatedAtUtc)</td>
+                            <td class="row-actions">
+                                @if (_editingKey == definition.Key)
+                                {
+                                    <button class="btn btn-small btn-primary" @onclick="() => SaveGlobalAsync(definition)">Save</button>
+                                    <button class="btn btn-small" @onclick="() => _editingKey = null">Cancel</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-small" @onclick="() => StartEdit(definition.Key, setting.Value)">Change</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Task overrides</h2>
+        <p class="hint">A task can have its own retry settings. Everything else uses the global value.</p>
+        @if (o.TaskOverrides.Count > 0)
+        {
+            <table class="table">
+                <thead><tr><th>Task</th><th>Setting</th><th>Value</th><th>Changed</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var item in o.TaskOverrides)
+                    {
+                        <tr>
+                            <td><a href="tasks/@item.TaskId">@item.TaskName</a></td>
+                            <td>@item.Key</td>
+                            <td>@item.Value</td>
+                            <td class="hint">@Display.ShortTime(item.UpdatedAtUtc)</td>
+                            <td class="row-actions"><button class="btn btn-small" @onclick="() => RemoveOverrideAsync(item)">Use global value</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        <form class="toolbar" @onsubmit="AddOverrideAsync">
+            <div class="field">
+                <label for="ov-task">Task</label>
+                <select id="ov-task" @bind="_overrideTask">
+                    <option value="">Select a task…</option>
+                    @foreach (var task in _lookups)
+                    {
+                        <option value="@task.Id">@task.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label for="ov-key">Setting</label>
+                <select id="ov-key" @bind="_overrideKey">
+                    @foreach (var definition in SettingDefinitions.All.Where(d => d.AllowTaskOverride))
+                    {
+                        <option value="@definition.Key">@definition.Key</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label for="ov-value">Value</label>
+                <input id="ov-value" type="number" @bind="_overrideValue" style="width:7rem" />
+            </div>
+            <button class="btn" type="submit">Add override</button>
+        </form>
+        <ErrorBanner Message="@_overrideError" />
+    </div>
+
+    <div class="card">
+        <h2>Logging providers</h2>
+        <p class="hint">Where scheduler log entries are written, and from which level. The File provider writes one JSON line per entry.</p>
+        <table class="table">
+            <thead><tr><th>Provider</th><th>Type</th><th>Enabled</th><th>Minimum level</th></tr></thead>
+            <tbody>
+                @foreach (var provider in o.LoggingProviders)
+                {
+                    <tr>
+                        <td>@provider.Name</td>
+                        <td>@provider.Type</td>
+                        <td>
+                            <input type="checkbox" checked="@provider.IsActive" aria-label="Enable @provider.Name"
+                                   @onchange="e => SaveProviderAsync(provider, e.Value is true, provider.MinimumLevel)" />
+                        </td>
+                        <td>
+                            <select value="@provider.MinimumLevel" aria-label="Minimum level for @provider.Name"
+                                    @onchange="e => SaveProviderAsync(provider, provider.IsActive, Enum.Parse<SchedulerLogLevel>((string)e.Value!))">
+                                @foreach (var level in Enum.GetValues<SchedulerLogLevel>())
+                                {
+                                    <option value="@level">@level</option>
+                                }
+                            </select>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else if (_failed is null)
+{
+    <p class="muted">Loading…</p>
+}
+
+@code {
+    private SettingsOverview? _overview;
+    private IReadOnlyList<TaskLookup> _lookups = [];
+    private Result? _failed;
+    private string? _editingKey;
+    private string? _editValue;
+    private string? _editError;
+    private string _overrideTask = "";
+    private string _overrideKey = SettingDefinitions.All.First(d => d.AllowTaskOverride).Key;
+    private string? _overrideValue;
+    private string? _overrideError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _lookups = (await GetLookups.HandleAsync(new GetTaskLookupsQuery())).Value ?? [];
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var result = await GetSettings.HandleAsync(new GetSettingsQuery());
+        _failed = result.IsFailure ? result : null;
+        _overview = result.Value;
+    }
+
+    private void StartEdit(string key, string value)
+    {
+        _editingKey = key;
+        _editValue = value;
+        _editError = null;
+    }
+
+    private async Task SaveGlobalAsync(SettingDefinition definition)
+    {
+        var result = await UpdateSetting.HandleAsync(new UpdateSettingCommand(definition.Key, _editValue ?? ""));
+        if (result.IsSuccess)
+        {
+            _editingKey = null;
+            Toasts.Success(definition.AppliesOnRestart
+                ? $"{definition.Key} is saved. It applies the next time the scheduler starts."
+                : $"{definition.Key} is saved and applies within 30 seconds.");
+            await LoadAsync();
+        }
+        else
+        {
+            _editError = result.Error!.Message;
+        }
+    }
+
+    private async Task AddOverrideAsync()
+    {
+        if (!Guid.TryParse(_overrideTask, out var taskId))
+        {
+            _overrideError = "Select a task.";
+            return;
+        }
+
+        var result = await UpdateSetting.HandleAsync(new UpdateSettingCommand(_overrideKey, _overrideValue ?? "", taskId));
+        _overrideError = result.IsFailure ? result.Error!.Message : null;
+        if (result.IsSuccess)
+        {
+            Toasts.Success("The task override is saved.");
+            _overrideValue = null;
+            await LoadAsync();
+        }
+    }
+
+    private async Task RemoveOverrideAsync(TaskSettingView item)
+    {
+        var result = await RemoveTaskSetting.HandleAsync(new RemoveTaskSettingCommand(item.TaskId, item.Key));
+        if (result.IsSuccess)
+        {
+            Toasts.Success($"'{item.TaskName}' now uses the global {item.Key}.");
+            await LoadAsync();
+        }
+        else
+        {
+            Toasts.Error(result.Error!.Message);
+        }
+    }
+
+    private async Task SaveProviderAsync(LoggingProviderView provider, bool active, SchedulerLogLevel level)
+    {
+        var result = await UpdateProvider.HandleAsync(new UpdateLoggingProviderCommand(provider.Id, active, level));
+        if (result.IsSuccess)
+        {
+            Toasts.Success($"{provider.Name} logging: {(active ? "enabled" : "disabled")}, from {level}.");
+        }
+        else
+        {
+            Toasts.Error(result.Error!.Message);
+        }
+
+        await LoadAsync();
+    }
+}

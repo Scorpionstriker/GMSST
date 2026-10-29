@@ -1,4 +1,127 @@
 @page "/help"
 
-<h1>Help</h1>
-<p>Page guides, cron syntax and the extension guide (FR-60).</p>
+<div class="page-header"><h1>Help</h1></div>
+
+@* Help for each page, the cron syntax and how to extend the scheduler (FR-54). *@
+<div class="split">
+    <nav class="list-menu no-print" aria-label="Help topics">
+        @foreach (var (key, title) in Topics)
+        {
+            <button class="btn @(_topic == key ? "selected" : "")" @onclick="() => _topic = key">@title</button>
+        }
+    </nav>
+    <div class="card">
+        @switch (_topic)
+        {
+            case "start":
+                <h2>Getting started</h2>
+                <ol>
+                    <li>Open <a href="tasks">Tasks</a> and select <strong>New task</strong>.</li>
+                    <li>Give the task a unique name and choose a <strong>task type</strong>. The type decides what the task does; modules add more types.</li>
+                    <li>Choose when it runs: on a cron schedule, every interval, or once. The <strong>Next runs</strong> list shows the next five times before you save.</li>
+                    <li>Optionally fill in the payload (settings for the task type; use the example link), priority, retries and time-out.</li>
+                    <li>Save. The engine picks the task up straight away. Use <strong>Run now</strong> to test it, then check <a href="executions">Execution history</a>.</li>
+                </ol>
+                <p>Fields marked with a red star are required. If a value is not accepted, the reason is shown beneath the field.</p>
+                break;
+            case "pages":
+                <h2>The pages</h2>
+                <dl class="kv">
+                    <dt>Dashboard</dt><dd>Engine status, the next run, counts for the last 24 hours, charts and the latest runs. It updates by itself.</dd>
+                    <dt>Tasks</dt><dd>Search, filter and sort tasks; run, pause, resume, delete and restore them. Select a name to edit it.</dd>
+                    <dt>Queue</dt><dd>Runs that are due and waiting for a worker, and runs a worker has claimed. Waiting runs can be cancelled.</dd>
+                    <dt>Execution history</dt><dd>Every run with its status, timing and host. Select a row for the output, error and log. Export to CSV.</dd>
+                    <dt>Error log</dt><dd>Failed and timed-out runs with their error messages and technical details.</dd>
+                    <dt>Reports</dt><dd>Five reports for a date range: summary, failures, performance, upcoming schedule and sign-ins. Export or print.</dd>
+                    <dt>Configuration</dt><dd>Scheduler settings with their allowed ranges, per-task retry overrides and logging providers. Administrators only.</dd>
+                    <dt>Modules</dt><dd>The loaded modules and the task types each one provides.</dd>
+                    <dt>Backup and restore</dt><dd>Make a backup now, see every backup with its check result, and restore one. Administrators only.</dd>
+                </dl>
+                break;
+            case "status":
+                <h2>Statuses</h2>
+                <h3>Tasks</h3>
+                <p><StatusBadge Value="ScheduledTaskStatus.Active" /> runs on its schedule. <StatusBadge Value="ScheduledTaskStatus.Paused" /> does not run on
+                    its schedule but can be run manually. <StatusBadge Value="ScheduledTaskStatus.Disabled" /> does not run at all until it is resumed.</p>
+                <h3>Runs</h3>
+                <p><StatusBadge Value="ExecutionStatus.Running" /> is in progress. <StatusBadge Value="ExecutionStatus.Success" /> finished.
+                    <StatusBadge Value="ExecutionStatus.Retrying" /> failed and a retry is queued. <StatusBadge Value="ExecutionStatus.Failed" /> failed with no retries left.
+                    <StatusBadge Value="ExecutionStatus.TimedOut" /> took longer than its time-out. <StatusBadge Value="ExecutionStatus.Cancelled" /> was stopped, for example
+                    when the application closed; it is queued again.</p>
+                <h3>Retries</h3>
+                <p>A failed or timed-out run is retried up to the task's retry limit (or the global MaxRetryLimit). The wait starts at
+                    RetryBaseDelaySeconds and doubles each time, up to RetryMaxDelaySeconds.</p>
+                break;
+            case "cron":
+                <h2>Cron expressions</h2>
+                <p>Five fields separated by spaces: <code>minute hour day-of-month month day-of-week</code>. Times are in the task's time zone.</p>
+                <table class="table">
+                    <thead><tr><th>Field</th><th>Allowed</th></tr></thead>
+                    <tbody>
+                        <tr><td>Minute</td><td>0–59</td></tr>
+                        <tr><td>Hour</td><td>0–23</td></tr>
+                        <tr><td>Day of month</td><td>1–31</td></tr>
+                        <tr><td>Month</td><td>1–12 or JAN–DEC</td></tr>
+                        <tr><td>Day of week</td><td>0–6 (0 = Sunday) or SUN–SAT</td></tr>
+                    </tbody>
+                </table>
+                <p><code>*</code> any value · <code>5,10</code> a list · <code>1-5</code> a range · <code>*/15</code> every 15th value.
+                    When both day fields are restricted, a day matching either one runs.</p>
+                <table class="table">
+                    <thead><tr><th>Expression</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                        <tr><td class="mono">*/5 * * * *</td><td>Every 5 minutes</td></tr>
+                        <tr><td class="mono">0 * * * *</td><td>Every hour, on the hour</td></tr>
+                        <tr><td class="mono">0 2 * * *</td><td>Every day at 02:00</td></tr>
+                        <tr><td class="mono">30 8 * * 1-5</td><td>Weekdays at 08:30</td></tr>
+                        <tr><td class="mono">0 9 1 * *</td><td>The first of every month at 09:00</td></tr>
+                        <tr><td class="mono">0 18 * * FRI</td><td>Fridays at 18:00</td></tr>
+                    </tbody>
+                </table>
+                <p>When the clocks change, a time that does not exist that day is skipped, and a time that happens twice runs once. Use UTC for tasks that must run at exact intervals.</p>
+                break;
+            case "missed":
+                <h2>Missed runs</h2>
+                <p>If the computer was off or the scheduler was closed when runs were due, the task's <strong>If runs were missed</strong> setting decides what happens when it starts again:</p>
+                <ul>
+                    <li><strong>Run once to catch up</strong> (default): one run now, then the normal schedule.</li>
+                    <li><strong>Skip them</strong>: no catch-up run; the next scheduled time is used.</li>
+                    <li><strong>Run every missed run</strong>: each missed run is queued, up to the RunAllMisfireCap setting.</li>
+                </ul>
+                <p>A run that was in progress when the application closed is cancelled and queued again, so no work is lost.</p>
+                break;
+            case "extend":
+                <h2>Extending the scheduler</h2>
+                <p>New behaviour is added as a <strong>module</strong>, without changing the core projects.</p>
+                <ol>
+                    <li>Create a class library that references <span class="mono">Scheduler.Extensibility</span> only.</li>
+                    <li>Write a task handler: a class implementing <span class="mono">ITaskHandler</span> with a unique <span class="mono">TaskType</span>
+                        (for example <span class="mono">MyCompany.SendReport</span>), a display name, an optional payload example, and
+                        <span class="mono">ExecuteAsync</span>, which returns a <span class="mono">TaskResult</span>. Use the cancellation token for time-outs.</li>
+                    <li>Write a module: a class implementing <span class="mono">ISchedulerModule</span> whose <span class="mono">Register</span> method adds the
+                        handler (<span class="mono">services.AddTransient&lt;ITaskHandler, MyHandler&gt;()</span>) and any services. It may add pages (Razor
+                        components with an <span class="mono">@@page</span> route) and menu entries, and create its own tasks in <span class="mono">InitializeAsync</span>.</li>
+                    <li>Add the module to <span class="mono">ModuleCatalog.cs</span> in the Admin project and add a project reference.</li>
+                </ol>
+                <p>To remove a module, delete its line in ModuleCatalog.cs and its project reference. Its task types, pages and menu entries disappear;
+                    existing tasks of its types stay in the list but are not run on this host.</p>
+                <p>The Login and Security module is itself a module: remove it to run without sign-in, or replace <span class="mono">IAuthenticationProvider</span>
+                    to sign in against another directory. The Inventory Monitor and Maintenance Agent projects are worked examples.</p>
+                break;
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly (string Key, string Title)[] Topics =
+    [
+        ("start", "Getting started"),
+        ("pages", "The pages"),
+        ("status", "Statuses and retries"),
+        ("cron", "Cron expressions"),
+        ("missed", "Missed runs"),
+        ("extend", "Extending the scheduler")
+    ];
+
+    private string _topic = "start";
+}

@@ -1,4 +1,141 @@
 @page "/inventory/products"
+@inject InventoryStore Store
+@inject ICurrentUser CurrentUser
 
-<h1>Products</h1>
-<p>Product list goes here.</p>
+<div class="page-header">
+    <h1>Products</h1>
+    @if (CurrentUser.IsAdministrator && !_editing)
+    {
+        <button class="btn btn-primary" @onclick="() => Edit(null)">Add product</button>
+    }
+</div>
+
+@if (_error is not null)
+{
+    <div class="banner banner-error" role="alert">@_error</div>
+}
+@if (_notice is not null)
+{
+    <div class="banner banner-success" role="status">@_notice</div>
+}
+
+@if (_editing)
+{
+    <div class="card narrow">
+        <h2>@(_id is null ? "New product" : "Edit product")</h2>
+        <form @onsubmit="SaveAsync">
+            <div class="field"><label for="sku">SKU</label><input id="sku" @bind="_sku" maxlength="30" /></div>
+            <div class="field"><label for="name">Name</label><input id="name" @bind="_name" maxlength="100" /></div>
+            <div class="field"><label for="price">Unit price</label><input id="price" type="number" step="0.01" min="0" @bind="_price" /></div>
+            <div class="field"><label for="qty">Quantity on hand</label><input id="qty" type="number" min="0" @bind="_quantity" /></div>
+            <div class="field"><label for="reorder">Reorder level</label><input id="reorder" type="number" min="0" @bind="_reorder" /></div>
+            <div class="actions">
+                <button class="btn btn-primary" type="submit">Save</button>
+                <button class="btn" type="button" @onclick="() => _editing = false">Cancel</button>
+            </div>
+        </form>
+    </div>
+}
+
+@if (_confirmDelete is { } doomed)
+{
+    <div class="banner banner-warning">
+        Delete product <strong>@doomed.Name</strong> (@doomed.Sku)? This cannot be undone.
+        <div class="actions">
+            <button class="btn btn-danger" @onclick="DeleteAsync">Delete</button>
+            <button class="btn" @onclick="() => _confirmDelete = null">Keep</button>
+        </div>
+    </div>
+}
+
+<div class="card">
+    @if (_products is null)
+    {
+        <p class="muted">Loading…</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead><tr><th>SKU</th><th>Name</th><th class="num">Unit price</th><th class="num">On hand</th><th class="num">Reorder level</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var p in _products)
+                {
+                    <tr>
+                        <td>@p.Sku</td>
+                        <td>@p.Name</td>
+                        <td class="num">@p.UnitPrice.ToString("N2")</td>
+                        <td class="num">@p.QuantityOnHand</td>
+                        <td class="num">@p.ReorderLevel</td>
+                        <td class="row-actions">
+                            @if (CurrentUser.IsAdministrator)
+                            {
+                                <button class="btn btn-small" @onclick="() => Edit(p)">Edit</button>
+                                <button class="btn btn-small btn-danger" @onclick="() => _confirmDelete = p">Delete</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<Product>? _products;
+    private bool _editing;
+    private Guid? _id;
+    private string _sku = "";
+    private string _name = "";
+    private decimal _price;
+    private int _quantity;
+    private int _reorder;
+    private string? _error;
+    private string? _notice;
+    private Product? _confirmDelete;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _products = await Store.GetProductsAsync();
+        }
+        catch (Exception)
+        {
+            _error = "The inventory data could not be loaded.";
+        }
+    }
+
+    private void Edit(Product? product)
+    {
+        _error = _notice = null;
+        _editing = true;
+        _id = product?.Id;
+        _sku = product?.Sku ?? "";
+        _name = product?.Name ?? "";
+        _price = product?.UnitPrice ?? 0;
+        _quantity = product?.QuantityOnHand ?? 0;
+        _reorder = product?.ReorderLevel ?? 0;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = await Store.SaveProductAsync(_id, _sku, _name, _price, _quantity, _reorder);
+        if (_error is null)
+        {
+            _editing = false;
+            _notice = $"Product {_sku.Trim().ToUpperInvariant()} was saved.";
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        var product = _confirmDelete!;
+        _confirmDelete = null;
+        await Store.DeleteProductAsync(product.Id);
+        _notice = $"Product {product.Sku} was deleted.";
+        await LoadAsync();
+    }
+}

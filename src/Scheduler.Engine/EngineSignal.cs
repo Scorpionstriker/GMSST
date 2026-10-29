@@ -1,18 +1,27 @@
+using Scheduler.Application.Common;
+
 namespace Scheduler.Engine;
 
 /// <summary>
-/// Wakes the engine immediately when a task is created, changed or run manually (FR-18).
+/// Wakes the engine immediately when a task is created, changed or run manually, or when a worker becomes free
+/// (FR-18). Several wake-ups before the engine looks collapse into one.
 /// </summary>
-public sealed class EngineSignal
+public sealed class EngineSignal : IEngineSignal
 {
     private readonly SemaphoreSlim _signal = new(0, 1);
 
     public void Wake()
     {
-        if (_signal.CurrentCount == 0)
+        try
         {
-            try { _signal.Release(); }
-            catch (SemaphoreFullException) { /* already signalled */ }
+            if (_signal.CurrentCount == 0)
+            {
+                _signal.Release();
+            }
+        }
+        catch (SemaphoreFullException)
+        {
+            // Already signalled.
         }
     }
 

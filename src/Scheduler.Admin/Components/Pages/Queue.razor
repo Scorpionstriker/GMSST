@@ -1,4 +1,136 @@
 @page "/queue"
+@using Scheduler.Application.Queue
+@implements IDisposable
+@inject IQueryHandler<GetQueueQuery, PagedResult<QueueListItem>> GetQueue
+@inject ICommandHandler<CancelQueueEntryCommand, Unit> Cancel
+@inject ISchedulerEvents Events
+@inject ICurrentUser CurrentUser
+@inject ToastService Toasts
 
-<h1>Queue</h1>
-<p>Waiting and claimed queue entries, with cancel for waiting entries (FR-19, FR-24, FR-59).</p>
+<div class="page-header">
+    <h1>Queue</h1>
+    <button class="btn" @onclick="() => LoadAsync(_page?.Page ?? 1)">Refresh</button>
+</div>
+
+<p class="muted">Runs that are due and waiting for a free worker, and runs a worker has claimed. Higher priority and earlier time go first.</p>
+
+<div class="toolbar">
+    <div class="segmented" role="group" aria-label="Show">
+        <button class="btn @(_show == null ? "selected" : "")" @onclick="() => ShowAsync(null)">Waiting and claimed</button>
+        <button class="btn @(_show == QueueStatus.Waiting ? "selected" : "")" @onclick="() => ShowAsync(QueueStatus.Waiting)">Waiting</button>
+        <button class="btn @(_show == QueueStatus.Claimed ? "selected" : "")" @onclick="() => ShowAsync(QueueStatus.Claimed)">Claimed</button>
+    </div>
+</div>
+
+<ErrorBanner Result="_failed" />
+
+@if (_page is { } page)
+{
+    @if (page.TotalCount == 0)
+    {
+        <div class="card"><p>The queue is empty. Due runs appear here until a worker picks them up.</p></div>
+    }
+    else
+    {
+        <div class="card table-wrap">
+            <table class="table">
+                <thead>
+                    <tr><th>Task</th><th>Status</th><th>Trigger</th><th class="num">Priority</th><th>Due</th><th>Queued</th><th>Worker</th><th class="num">Attempt</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in page.Items)
+                    {
+                        <tr>
+                            <td><a href="tasks/@entry.TaskId">@entry.TaskName</a><div class="hint mono">@entry.TaskType</div></td>
+                            <td><StatusBadge Value="entry.Status" /></td>
+                            <td>@entry.TriggerType</td>
+                            <td class="num">@entry.Priority</td>
+                            <td>@Display.Time(entry.ScheduledTimeUtc)</td>
+                            <td>@Display.Time(entry.EnqueuedAtUtc)</td>
+                            <td>
+                                @if (entry.ClaimedByHost is not null)
+                                {
+                                    @entry.ClaimedByHost <div class="hint">until @Display.Time(entry.ClaimedUntilUtc)</div>
+                                }
+                            </td>
+                            <td class="num">@entry.Attempt</td>
+                            <td class="row-actions">
+                                @if (CurrentUser.IsAdministrator && entry.Status == QueueStatus.Waiting)
+                                {
+                                    <button class="btn btn-small btn-danger" @onclick="() => _cancelling = entry">Cancel</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <Pager Page="page" Changed="LoadAsync" />
+        </div>
+    }
+}
+
+<ConfirmDialog Visible="_cancelling is not null" Title="Cancel this run?" ConfirmText="Cancel run" Confirmed="CancelAsync" Cancelled="() => _cancelling = null">
+    <p>Cancel the waiting run of <strong>@_cancelling?.TaskName</strong> due @Display.Time(_cancelling?.ScheduledTimeUtc)?
+        The task itself is not changed; its next scheduled run is queued as normal.</p>
+</ConfirmDialog>
+
+@code {
+    private PagedResult<QueueListItem>? _page;
+    private Result? _failed;
+    private QueueStatus? _show;
+    private QueueListItem? _cancelling;
+    private Timer? _debounce;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Events.TaskQueued += OnEvent;
+        Events.TaskStarted += OnEvent;
+        Events.TaskSucceeded += OnEvent;
+        Events.TaskFailed += OnEvent;
+        await LoadAsync(1);
+    }
+
+    private Task ShowAsync(QueueStatus? status)
+    {
+        _show = status;
+        return LoadAsync(1);
+    }
+
+    private async Task LoadAsync(int pageNumber)
+    {
+        QueueStatus[] statuses = _show is { } s ? [s] : [];
+        var result = await GetQueue.HandleAsync(new GetQueueQuery(statuses, new PageRequest(pageNumber, 50)));
+        _failed = result.IsFailure ? result : null;
+        _page = result.Value ?? _page;
+        StateHasChanged();
+    }
+
+    private async Task CancelAsync()
+    {
+        var entry = _cancelling!;
+        _cancelling = null;
+        var result = await Cancel.HandleAsync(new CancelQueueEntryCommand(entry.Id));
+        if (result.IsSuccess)
+        {
+            Toasts.Success($"The run of '{entry.TaskName}' has been cancelled.");
+        }
+        else
+        {
+            Toasts.Error(result.Error!.Message);
+        }
+
+        await LoadAsync(_page?.Page ?? 1);
+    }
+
+    private void OnEvent(object? sender, TaskLifecycleEventArgs e) =>
+        Interlocked.Exchange(ref _debounce, new Timer(_ => InvokeAsync(() => LoadAsync(_page?.Page ?? 1)), null, 750, Timeout.Infinite))?.Dispose();
+
+    public void Dispose()
+    {
+        Events.TaskQueued -= OnEvent;
+        Events.TaskStarted -= OnEvent;
+        Events.TaskSucceeded -= OnEvent;
+        Events.TaskFailed -= OnEvent;
+        _debounce?.Dispose();
+    }
+}

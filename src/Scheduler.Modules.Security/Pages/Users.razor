@@ -1,4 +1,239 @@
 @page "/users"
+@inject UserManagement Accounts
+@inject UserSession Session
 
-<h1>Users</h1>
-<p>User management goes here (FR-49, FR-51, FR-52).</p>
+<div class="page-header">
+    <h1>Users</h1>
+    @if (Session.IsAdministrator && _editing is null && !_adding)
+    {
+        <button class="btn btn-primary" @onclick="StartAdd">Add user</button>
+    }
+</div>
+
+@if (!Session.IsAdministrator)
+{
+    <div class="banner banner-info">Only administrators can manage users.</div>
+}
+else
+{
+    @if (_notice is not null)
+    {
+        <div class="banner banner-success" role="status">@_notice</div>
+    }
+
+    @if (_adding)
+    {
+        <div class="card narrow">
+            <h2>New user</h2>
+            <form @onsubmit="AddAsync">
+                <div class="field">
+                    <label for="add-username">Username</label>
+                    <input id="add-username" @bind="_username" maxlength="50" />
+                    <FieldError Result="_result" Field="Username" />
+                </div>
+                <div class="field">
+                    <label for="add-role">Role</label>
+                    <select id="add-role" @bind="_role">
+                        <option value="@UserRole.Viewer">Viewer (read only)</option>
+                        <option value="@UserRole.Administrator">Administrator</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="add-password">Password</label>
+                    <input id="add-password" type="password" @bind="_password" autocomplete="new-password" />
+                    <span class="hint">@PasswordPolicy.Description</span>
+                    <FieldError Result="_result" Field="Password" />
+                </div>
+                <div class="field">
+                    <label for="add-confirmation">Confirm password</label>
+                    <input id="add-confirmation" type="password" @bind="_confirmation" autocomplete="new-password" />
+                    <FieldError Result="_result" Field="Confirmation" />
+                </div>
+                <ErrorBanner Result="_result" />
+                <div class="actions">
+                    <button class="btn btn-primary" type="submit">Create user</button>
+                    <button class="btn" type="button" @onclick="Cancel">Cancel</button>
+                </div>
+            </form>
+        </div>
+    }
+
+    @if (_editing is not null)
+    {
+        <div class="card narrow">
+            <h2>Edit @_editing.Username</h2>
+            <div class="field">
+                <label for="edit-role">Role</label>
+                <select id="edit-role" @bind="_role">
+                    <option value="@UserRole.Viewer">Viewer (read only)</option>
+                    <option value="@UserRole.Administrator">Administrator</option>
+                </select>
+            </div>
+            <div class="field checkbox">
+                <label><input type="checkbox" @bind="_active" /> Active (can sign in)</label>
+            </div>
+            @if (_confirmDeactivate)
+            {
+                <div class="banner banner-warning">
+                    Deactivate <strong>@_editing.Username</strong>? They will no longer be able to sign in.
+                    <div class="actions">
+                        <button class="btn btn-danger" @onclick="SaveAsync">Deactivate</button>
+                        <button class="btn" @onclick="() => _confirmDeactivate = false">Keep active</button>
+                    </div>
+                </div>
+            }
+            <ErrorBanner Result="_result" />
+            <div class="actions">
+                <button class="btn btn-primary" @onclick="ConfirmSaveAsync">Save</button>
+                <button class="btn" @onclick="Cancel">Cancel</button>
+            </div>
+
+            <h3>Reset password</h3>
+            <div class="field">
+                <label for="reset-password">New password</label>
+                <input id="reset-password" type="password" @bind="_password" autocomplete="new-password" />
+                <span class="hint">@PasswordPolicy.Description</span>
+                <FieldError Result="_result" Field="Password" />
+            </div>
+            <div class="field">
+                <label for="reset-confirmation">Confirm new password</label>
+                <input id="reset-confirmation" type="password" @bind="_confirmation" autocomplete="new-password" />
+                <FieldError Result="_result" Field="Confirmation" />
+            </div>
+            <button class="btn" @onclick="ResetAsync">Reset password</button>
+        </div>
+    }
+
+    <div class="card">
+        <table class="table">
+            <thead>
+                <tr><th>Username</th><th>Role</th><th>Status</th><th>Last sign-in</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var user in _users)
+                {
+                    <tr>
+                        <td>@user.Username @(user.Id == Session.UserId ? "(you)" : "")</td>
+                        <td>@user.Role</td>
+                        <td>
+                            @if (!user.IsActive)
+                            {
+                                <span class="badge badge-muted">Inactive</span>
+                            }
+                            else if (user.LockoutEndUtc > DateTime.UtcNow)
+                            {
+                                <span class="badge badge-warning">Locked</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-success">Active</span>
+                            }
+                        </td>
+                        <td>@(user.LastLoginAtUtc?.ToLocalTime().ToString("g") ?? "Never")</td>
+                        <td><button class="btn btn-small" @onclick="() => StartEdit(user)">Edit</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<UserAccount> _users = [];
+    private UserAccount? _editing;
+    private bool _adding;
+    private string _username = "";
+    private string _password = "";
+    private string _confirmation = "";
+    private UserRole _role = UserRole.Viewer;
+    private bool _active = true;
+    private bool _confirmDeactivate;
+    private UserActionResult? _result;
+    private string? _notice;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Session.IsAdministrator)
+        {
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ReloadAsync() => _users = await Accounts.ListAsync();
+
+    private void StartAdd()
+    {
+        Clear();
+        _adding = true;
+    }
+
+    private void StartEdit(UserAccount user)
+    {
+        Clear();
+        _editing = user;
+        _role = user.Role;
+        _active = user.IsActive;
+    }
+
+    private void Cancel() => Clear();
+
+    private void Clear()
+    {
+        _adding = false;
+        _editing = null;
+        _username = _password = _confirmation = "";
+        _role = UserRole.Viewer;
+        _confirmDeactivate = false;
+        _result = null;
+        _notice = null;
+    }
+
+    private async Task AddAsync()
+    {
+        _result = await Accounts.CreateUserAsync(_username, _password, _confirmation, _role);
+        if (_result.Succeeded)
+        {
+            var name = _username.Trim();
+            Clear();
+            _notice = $"User {name} was created.";
+            await ReloadAsync();
+        }
+    }
+
+    // FR-61: deactivating a user asks for confirmation first.
+    private async Task ConfirmSaveAsync()
+    {
+        if (_editing is { IsActive: true } && !_active)
+        {
+            _confirmDeactivate = true;
+            return;
+        }
+
+        await SaveAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        _confirmDeactivate = false;
+        _result = await Accounts.UpdateUserAsync(_editing!.Id, _role, _active);
+        if (_result.Succeeded)
+        {
+            var name = _editing.Username;
+            Clear();
+            _notice = $"User {name} was updated.";
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ResetAsync()
+    {
+        _result = await Accounts.ResetPasswordAsync(_editing!.Id, _password, _confirmation);
+        if (_result.Succeeded)
+        {
+            var name = _editing.Username;
+            Clear();
+            _notice = $"The password of {name} was reset.";
+            await ReloadAsync();
+        }
+    }
+}

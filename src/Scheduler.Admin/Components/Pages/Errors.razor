@@ -1,4 +1,103 @@
 @page "/errors"
+@using Scheduler.Application.Executions
+@using Scheduler.Application.Tasks
+@inject IQueryHandler<SearchErrorsQuery, PagedResult<ErrorListItem>> Search
+@inject IQueryHandler<GetTaskLookupsQuery, IReadOnlyList<TaskLookup>> GetLookups
 
-<h1>Error Log</h1>
-<p>Errors with filters and stack traces (FR-30, FR-59).</p>
+<div class="page-header"><h1>Error log</h1></div>
+<p class="muted">Every failed or timed-out run with its error. Select a row for the technical details.</p>
+
+<form class="toolbar" @onsubmit="() => LoadAsync(1)">
+    <div class="field">
+        <label for="text">Search</label>
+        <input id="text" @bind="_text" placeholder="Error type or message" />
+    </div>
+    <div class="field">
+        <label for="task">Task</label>
+        <select id="task" @bind="TaskFilter">
+            <option value="">All tasks</option>
+            @foreach (var task in _lookups)
+            {
+                <option value="@task.Id">@task.Name@(task.IsDeleted ? " (deleted)" : "")</option>
+            }
+        </select>
+    </div>
+    <div class="field"><label for="from">From</label><input id="from" type="datetime-local" @bind="_from" /></div>
+    <div class="field"><label for="to">To</label><input id="to" type="datetime-local" @bind="_to" /></div>
+    <button class="btn" type="submit">Apply</button>
+</form>
+
+<ErrorBanner Result="_failed" />
+
+@if (_page is { } page)
+{
+    @if (page.TotalCount == 0)
+    {
+        <div class="card"><p>No errors recorded for these filters.</p></div>
+    }
+    else
+    {
+        <div class="card table-wrap">
+            <table class="table">
+                <thead><tr><th>Time</th><th>Task</th><th>Error</th><th>Message</th><th>Run status</th><th class="num">Retry</th></tr></thead>
+                <tbody>
+                    @foreach (var error in page.Items)
+                    {
+                        <tr class="clickable @(_open == error.Id ? "selected" : "")" @onclick="() => _open = _open == error.Id ? null : error.Id">
+                            <td style="white-space:nowrap">@Display.Time(error.OccurredAtUtc)</td>
+                            <td>@error.TaskName</td>
+                            <td class="mono">@error.ErrorType</td>
+                            <td>@error.ErrorMessage</td>
+                            <td><StatusBadge Value="error.ExecutionStatus" /></td>
+                            <td class="num">@error.RetryCount</td>
+                        </tr>
+                        @if (_open == error.Id)
+                        {
+                            <tr>
+                                <td colspan="6">
+                                    <a href="executions?id=@error.ExecutionId">Open the execution with its log</a>
+                                    @if (!string.IsNullOrEmpty(error.StackTrace))
+                                    {
+                                        <pre>@error.StackTrace</pre>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            <Pager Page="page" Changed="LoadAsync" />
+        </div>
+    }
+}
+
+@code {
+    private PagedResult<ErrorListItem>? _page;
+    private Result? _failed;
+    private IReadOnlyList<TaskLookup> _lookups = [];
+    private string? _text;
+    private Guid? _task;
+    private DateTime? _from;
+    private DateTime? _to;
+    private Guid? _open;
+
+    private string TaskFilter
+    {
+        get => _task?.ToString() ?? "";
+        set => _task = Guid.TryParse(value, out var id) ? id : null;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _lookups = (await GetLookups.HandleAsync(new GetTaskLookupsQuery(IncludeDeleted: true))).Value ?? [];
+        await LoadAsync(1);
+    }
+
+    private async Task LoadAsync(int pageNumber)
+    {
+        var filter = new ErrorFilter(Display.ToUtc(_from), Display.ToUtc(_to), _task, string.IsNullOrWhiteSpace(_text) ? null : _text.Trim());
+        var result = await Search.HandleAsync(new SearchErrorsQuery(filter, new PageRequest(pageNumber)));
+        _failed = result.IsFailure ? result : null;
+        _page = result.Value ?? _page;
+    }
+}

@@ -1,17 +1,104 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject StartupState Startup
+@inject ICurrentUser CurrentUser
+@inject IServiceProvider Services
+@inject NavigationManager Navigation
+@inject ThemeService Theme
+@inject IJSRuntime JS
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
-
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+@* The shell of every page. It shows the start-up screen until the scheduler is ready, sends a signed-out user to the
+   Login page when the Login and Security module is loaded (FR-45), and tracks activity for the idle time-out (FR-48). *@
+<div class="app-root" @onclick="Activity" @onkeydown="Activity">
+    @if (Startup.Phase != StartupPhase.Ready)
+    {
+        <div class="startup-screen">
+            <div class="card startup-card">
+                <h1>Generic System Scheduler</h1>
+                @if (Startup.Phase == StartupPhase.Starting)
+                {
+                    <p>Starting the scheduler: preparing the database and loading modules…</p>
+                }
+                else
+                {
+                    <div class="banner banner-error" role="alert">@Startup.Error</div>
+                    <button class="btn btn-primary" @onclick="Startup.RetryAsync">Try again</button>
+                }
+            </div>
         </div>
-
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
+    }
+    else if (IsLoginPage)
+    {
+        @Body
+    }
+    else if (NeedsSignIn)
+    {
+        <div class="startup-screen"><p class="muted">Redirecting to sign in…</p></div>
+    }
+    else
+    {
+        <div class="shell">
+            <NavMenu />
+            <div class="main">
+                <EngineHeader />
+                <main class="content">
+                    @Body
+                </main>
+            </div>
+        </div>
+    }
+    <Toasts />
 </div>
+
+@code {
+    private bool _themeApplied;
+
+    private bool HasSignIn => Services.GetService<IAuthenticationProvider>() is not null;
+
+    private bool IsLoginPage =>
+        Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("login", StringComparison.OrdinalIgnoreCase);
+
+    private bool NeedsSignIn => HasSignIn && !CurrentUser.IsAuthenticated;
+
+    protected override void OnInitialized()
+    {
+        Startup.Changed += OnChanged;
+        CurrentUser.Changed += OnUserChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+        _ = Startup.EnsureStartedAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_themeApplied)
+        {
+            _themeApplied = true;
+            await Theme.ApplyAsync(JS);
+        }
+
+        if (Startup.Phase == StartupPhase.Ready && !IsLoginPage && NeedsSignIn)
+        {
+            var returnUrl = "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+            Navigation.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
+        }
+    }
+
+    private void Activity() => CurrentUser.RegisterActivity();
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnUserChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        CurrentUser.RegisterActivity();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Startup.Changed -= OnChanged;
+        CurrentUser.Changed -= OnUserChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

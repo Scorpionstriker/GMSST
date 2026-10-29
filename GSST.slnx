@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/Solution Items/">
+    <File Path="Passwrord_DB.md" />
     <File Path="README.md" />
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
@@ -7,8 +8,8 @@
   </Folder>
   <Folder Name="/Core Scheduling Engine Layer/">
     <File Path="CSEL_ReadmeFile.md" />
-    <Project Path="src/Scheduler.Domain/Scheduler.Domain.csproj" />
     <Project Path="src/Scheduler.Application/Scheduler.Application.csproj" />
+    <Project Path="src/Scheduler.Domain/Scheduler.Domain.csproj" />
     <Project Path="src/Scheduler.Engine/Scheduler.Engine.csproj" />
   </Folder>
   <Folder Name="/Data Layer/">
@@ -31,8 +32,8 @@
     <Project Path="demos/DemoApps.MaintenanceAgent/DemoApps.MaintenanceAgent.csproj" />
   </Folder>
   <Folder Name="/Tests/">
-    <Project Path="tests/Scheduler.UnitTests/Scheduler.UnitTests.csproj" />
-    <Project Path="tests/Scheduler.IntegrationTests/Scheduler.IntegrationTests.csproj" />
     <Project Path="tests/Scheduler.ArchitectureTests/Scheduler.ArchitectureTests.csproj" />
+    <Project Path="tests/Scheduler.IntegrationTests/Scheduler.IntegrationTests.csproj" />
+    <Project Path="tests/Scheduler.UnitTests/Scheduler.UnitTests.csproj" />
   </Folder>
 </Solution>

@@ -5,26 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Generic System Scheduler</title>
     <base href="/" />
-    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="app.css" />
-    <link rel="stylesheet" href="Scheduler.Admin.styles.css" />
     <link rel="icon" href="data:,">
 </head>
 
 <body>
-
-    <div class="status-bar-safe-area"></div>
-
-    <div id="app">Loading...</div>
+    <div id="app">Loading…</div>
 
     <div id="blazor-error-ui" data-nosnippet>
-        An unhandled error has occurred.
+        Something went wrong in the Admin application. Details are in the log file.
         <a href="." class="reload">Reload</a>
         <span class="dismiss">🗙</span>
     </div>
 
     <script src="_framework/blazor.webview.js" autostart="false"></script>
-
+    <script>
+        // Used by the Reports page to print a report (FR-66).
+        window.gmssPrint = () => window.print();
+        // Applies the light or dark theme chosen in the header (NFR-01).
+        window.gmssSetTheme = theme => document.documentElement.setAttribute('data-theme', theme);
+    </script>
 </body>
 
 </html>

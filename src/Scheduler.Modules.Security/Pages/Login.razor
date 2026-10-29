@@ -1,4 +1,150 @@
 @page "/login"
+@inject UserManagement Users
+@inject IAuthenticationProvider Authentication
+@inject UserSession Session
+@inject NavigationManager Navigation
 
-<h1>Sign in</h1>
-<p>Login form goes here (FR-45, FR-47, FR-50).</p>
+<div class="login-screen">
+    <div class="card login-card">
+        <h1>Generic System Scheduler</h1>
+
+        @if (_loadError is not null)
+        {
+            <div class="banner banner-error" role="alert">@_loadError</div>
+            <button class="btn" @onclick="LoadAsync">Try again</button>
+        }
+        else if (_firstRun is null)
+        {
+            <p class="muted">Loading…</p>
+        }
+        else if (_firstRun == true)
+        {
+            <p>Create the first administrator account. There is no default password, so this account is the only way in.</p>
+            <form @onsubmit="CreateFirstAsync">
+                <div class="field">
+                    <label for="new-username">Username</label>
+                    <input id="new-username" @bind="_username" autocomplete="username" maxlength="50" />
+                    <FieldError Result="_result" Field="Username" />
+                </div>
+                <div class="field">
+                    <label for="new-password">Password</label>
+                    <input id="new-password" type="password" @bind="_password" autocomplete="new-password" />
+                    <span class="hint">@PasswordPolicy.Description</span>
+                    <FieldError Result="_result" Field="Password" />
+                </div>
+                <div class="field">
+                    <label for="new-confirmation">Confirm password</label>
+                    <input id="new-confirmation" type="password" @bind="_confirmation" autocomplete="new-password" />
+                    <FieldError Result="_result" Field="Confirmation" />
+                </div>
+                @if (_result is { Succeeded: false, Field: null })
+                {
+                    <div class="banner banner-error" role="alert">@_result.Error</div>
+                }
+                <button class="btn btn-primary" type="submit" disabled="@_busy">Create administrator</button>
+            </form>
+        }
+        else
+        {
+            @if (Session.ExpiredByTimeout)
+            {
+                <div class="banner banner-info">Your session ended after a period of inactivity. Please sign in again.</div>
+            }
+            <form @onsubmit="SignInAsync">
+                <div class="field">
+                    <label for="username">Username</label>
+                    <input id="username" @bind="_username" autocomplete="username" maxlength="50" />
+                </div>
+                <div class="field">
+                    <label for="password">Password</label>
+                    <input id="password" type="password" @bind="_password" autocomplete="current-password" />
+                </div>
+                @if (_message is not null)
+                {
+                    <div class="banner banner-error" role="alert">@_message</div>
+                }
+                <button class="btn btn-primary" type="submit" disabled="@_busy">@(_busy ? "Signing in…" : "Sign in")</button>
+            </form>
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    private bool? _firstRun;
+    private string? _loadError;
+    private string _username = "";
+    private string _password = "";
+    private string _confirmation = "";
+    private string? _message;
+    private UserActionResult? _result;
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loadError = null;
+        try
+        {
+            _firstRun = await Users.NeedsFirstAdministratorAsync();
+        }
+        catch (Exception)
+        {
+            _loadError = "The scheduler database cannot be reached. Check that PostgreSQL is running, then try again.";
+        }
+    }
+
+    private async Task SignInAsync()
+    {
+        _busy = true;
+        _message = null;
+        try
+        {
+            var result = await Authentication.SignInAsync(_username, _password);
+            _password = "";
+            if (result.Succeeded)
+            {
+                Navigation.NavigateTo(SafeReturnUrl());
+            }
+            else
+            {
+                _message = result.Message;
+            }
+        }
+        catch (Exception)
+        {
+            _message = "Signing in failed because the database cannot be reached.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task CreateFirstAsync()
+    {
+        _busy = true;
+        try
+        {
+            _result = await Users.CreateFirstAdministratorAsync(_username, _password, _confirmation);
+            if (_result.Succeeded)
+            {
+                await Authentication.SignInAsync(_username, _password);
+                _password = _confirmation = "";
+                Navigation.NavigateTo("/");
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // Only pages of this application, never another address.
+    private string SafeReturnUrl() =>
+        !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//") && !ReturnUrl.StartsWith("/login")
+            ? ReturnUrl
+            : "/";
+}
