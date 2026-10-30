@@ -212,19 +212,30 @@ textarea { resize: vertical; }
 textarea.code { font-family: var(--mono); font-size: .85rem; min-height: 140px; }
 .invalid, input.invalid, select.invalid, textarea.invalid { border-color: var(--danger); outline: 1px solid var(--danger); }
 .field-error { color: var(--danger); font-size: .85rem; }
-/* An empty date field shows a plain-language placeholder instead of the browser's yyyy/mm/dd --:-- mask, which
-   looked like a value. The mask comes back while the field has focus, so the date can still be typed. */
-.date-input { position: relative; display: flex; }
-.date-input input { flex: 1; }
-.date-input.empty input:not(:focus)::-webkit-datetime-edit { color: transparent; }
-.date-input.empty:not(:focus-within)::before {
-    content: attr(data-placeholder);
-    position: absolute;
-    left: calc(.6rem + 1px);
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--muted);
-    pointer-events: none;
+/* Date-only field typed as dd/mm/yy (Shared/DateField.razor). The native date input sits invisibly over the calendar
+   icon, so clicking the icon opens the browser's date picker while the text field keeps the dd/mm/yy format. */
+.date-field { position: relative; display: flex; flex-direction: column; }
+.date-field-box { position: relative; display: flex; }
+.date-field-box > input[type=text] { flex: 1; padding-right: 2rem; width: 100%; }
+.date-field-picker {
+    position: absolute; right: 1px; top: 1px; bottom: 1px; width: 1.9rem;
+    display: flex; align-items: center; justify-content: center; color: var(--muted); cursor: pointer;
+}
+.date-field-picker:hover { color: var(--text); }
+.date-time-fields { display: flex; gap: .4rem; }
+.date-time-fields > .date-field { flex: 1 1 9rem; min-width: 0; }
+.date-time-fields > .time-field { flex: 0 1 6.5rem; }
+.time-field > input[type=text] { width: 100%; }
+.date-time-fields.invalid { border: 0; outline: 0; }
+.date-time-fields.invalid input[type=text] { border-color: var(--danger); outline: 1px solid var(--danger); }
+.date-time-fields { align-items: flex-start; }
+.date-time-fields .date-field > .field-error { position: static; white-space: normal; }
+.date-field > .field-error { position: absolute; top: 100%; left: 0; margin-top: 2px; white-space: nowrap; font-size: .78rem; }
+.date-field-picker input[type=date] {
+    position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; opacity: 0; cursor: pointer;
+}
+.date-field-picker input[type=date]::-webkit-calendar-picker-indicator {
+    position: absolute; inset: 0; width: auto; height: auto; margin: 0; cursor: pointer;
 }
 .hint { color: var(--muted); font-size: .8rem; }
 .hint-inline { margin-left: .35rem; }

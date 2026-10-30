@@ -22,8 +22,8 @@
             }
         </select>
     </div>
-    <div class="field"><label for="from">From</label><div class="date-input @(_from is null ? "empty" : "")" data-placeholder="Any time"><input id="from" type="datetime-local" @bind="_from" /></div></div>
-    <div class="field"><label for="to">To</label><div class="date-input @(_to is null ? "empty" : "")" data-placeholder="Up to now"><input id="to" type="datetime-local" @bind="_to" /></div></div>
+    <div class="field"><label for="from">From</label><DateField Id="from" @bind-Value="_from" /></div>
+    <div class="field"><label for="to">To</label><DateField Id="to" @bind-Value="_to" /></div>
     <button class="btn" type="submit">Apply</button>
 </form>
 
@@ -95,7 +95,7 @@
 
     private async Task LoadAsync(int pageNumber)
     {
-        var filter = new ErrorFilter(Display.ToUtc(_from), Display.ToUtc(_to), _task, string.IsNullOrWhiteSpace(_text) ? null : _text.Trim());
+        var filter = new ErrorFilter(Display.ToUtc(_from), Display.ToUtc(Display.EndOfDay(_to)), _task, string.IsNullOrWhiteSpace(_text) ? null : _text.Trim());
         var result = await Search.HandleAsync(new SearchErrorsQuery(filter, new PageRequest(pageNumber)));
         _failed = result.IsFailure ? result : null;
         _page = result.Value ?? _page;

@@ -212,15 +212,15 @@ else
                 </div>
                 <div class="field">
                     <label for="start" class="@(_form.Type == ScheduleType.Once ? "required" : "")">@(_form.Type == ScheduleType.Once ? "Run at" : "Start")</label>
-                    <div class="date-input @(_form.StartTime is null ? "empty" : "")" data-placeholder="@(_form.Type == ScheduleType.Once ? "Choose a date and time" : "From now")"><input id="start" type="datetime-local" step="1" @bind="_form.StartTime" @bind:after="() => ScheduleChanged(TaskFields.StartTime)" class="@Invalid(TaskFields.StartTime)" /></div>
+                    <DateTimeFields Id="start" @bind-Value="_form.StartTime" @bind-Value:after="() => ScheduleChanged(TaskFields.StartTime)" CssClass="@Invalid(TaskFields.StartTime)" />
                     @* WP-8f: optional for cron and interval (empty means from now); a single run needs a future time. *@
                     @if (_form.Type != ScheduleType.Once)
                     {
-                        <span class="hint">Optional. Empty means from now.</span>
+                        <span class="hint">Optional. Empty means from now. A date without a time means 00:00.</span>
                     }
                     else
                     {
-                        <span class="hint">Required. Must be in the future.</span>
+                        <span class="hint">Required: a date (dd/mm/yy) and a time (hh:mm, 24-hour). Must be in the future.</span>
                     }
                     <FieldError Result="Shown" Field="@TaskFields.StartTime" />
                 </div>
@@ -228,8 +228,8 @@ else
                 {
                     <div class="field">
                         <label for="end">End</label>
-                        <div class="date-input @(_form.EndTime is null ? "empty" : "")" data-placeholder="No end"><input id="end" type="datetime-local" step="1" @bind="_form.EndTime" @bind:after="() => ScheduleChanged(TaskFields.EndTime)" class="@Invalid(TaskFields.EndTime)" /></div>
-                        <span class="hint">Optional. No runs after this time.</span>
+                        <DateTimeFields Id="end" @bind-Value="_form.EndTime" @bind-Value:after="() => ScheduleChanged(TaskFields.EndTime)" CssClass="@Invalid(TaskFields.EndTime)" />
+                        <span class="hint">Optional. No runs after this date and time; a date without a time means 00:00.</span>
                         <FieldError Result="Shown" Field="@TaskFields.EndTime" />
                     </div>
                     <div class="field">

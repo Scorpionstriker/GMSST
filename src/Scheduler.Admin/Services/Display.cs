@@ -22,6 +22,9 @@ public static class Display
     public static DateTime? ToUtc(DateTime? local) =>
         local is { } value ? DateTime.SpecifyKind(value, DateTimeKind.Local).ToUniversalTime() : null;
 
+    /// <summary>The last moment of a local date, so a "To" date filter includes the whole of that day.</summary>
+    public static DateTime? EndOfDay(DateTime? localDate) => localDate?.Date.AddDays(1).AddTicks(-1);
+
     public static string Duration(double? milliseconds) => milliseconds switch
     {
         null => Empty,

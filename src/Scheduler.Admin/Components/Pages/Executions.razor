@@ -53,8 +53,8 @@
             }
         </select>
     </div>
-    <div class="field"><label for="from">From</label><div class="date-input @(_from is null ? "empty" : "")" data-placeholder="Any time"><input id="from" type="datetime-local" @bind="_from" /></div></div>
-    <div class="field"><label for="to">To</label><div class="date-input @(_to is null ? "empty" : "")" data-placeholder="Up to now"><input id="to" type="datetime-local" @bind="_to" /></div></div>
+    <div class="field"><label for="from">From</label><DateField Id="from" @bind-Value="_from" /></div>
+    <div class="field"><label for="to">To</label><DateField Id="to" @bind-Value="_to" /></div>
     <button class="btn" type="submit">Apply</button>
 </form>
 
@@ -189,7 +189,7 @@
         }
     }
 
-    private ExecutionFilter Filter() => new(Display.ToUtc(_from), Display.ToUtc(_to), _task, _status, _trigger);
+    private ExecutionFilter Filter() => new(Display.ToUtc(_from), Display.ToUtc(Display.EndOfDay(_to)), _task, _status, _trigger);
 
     private async Task LoadAsync(int pageNumber)
     {

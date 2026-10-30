@@ -1,0 +1,53 @@
+@* A date and a time of day in two separate fields, dd/mm/yy and hh:mm, bound to one DateTime. The value is empty while
+   the date is empty; a date without a time stands for midnight (00:00) of that day. *@
+
+<div class="date-time-fields @CssClass">
+    <DateField Id="@Id" Value="_date" ValueChanged="OnDateChangedAsync" Placeholder="@DatePlaceholder" />
+    <TimeField Id="@(Id + "-time")" Value="_time" ValueChanged="OnTimeChangedAsync" Placeholder="@TimePlaceholder" />
+</div>
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public DateTime? Value { get; set; }
+    [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
+    [Parameter] public string DatePlaceholder { get; set; } = "dd/mm/yy";
+    [Parameter] public string TimePlaceholder { get; set; } = "hh:mm";
+    [Parameter] public string? CssClass { get; set; }
+
+    private DateTime? _date;
+    private TimeSpan? _time;
+    private DateTime? _last;
+
+    protected override void OnParametersSet()
+    {
+        // A value set by the page (an existing task) fills both fields; a time typed before the date is kept.
+        if (Value != _last)
+        {
+            _last = Value;
+            _date = Value?.Date;
+            if (Value is { } value)
+            {
+                _time = value.TimeOfDay;
+            }
+        }
+    }
+
+    private Task OnDateChangedAsync(DateTime? date)
+    {
+        _date = date;
+        return PublishAsync();
+    }
+
+    private Task OnTimeChangedAsync(TimeSpan? time)
+    {
+        _time = time;
+        return PublishAsync();
+    }
+
+    private async Task PublishAsync()
+    {
+        var value = _date is { } date ? date.Date + (_time ?? TimeSpan.Zero) : (DateTime?)null;
+        _last = value;
+        await ValueChanged.InvokeAsync(value);
+    }
+}

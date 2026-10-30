@@ -70,7 +70,7 @@ Actions for administrators:
 | Description | Optional |
 | Schedule | **On a cron schedule** (five fields: minute, hour, day of month, month, weekday; names such as MON and JAN are allowed), **Every interval** (seconds), or **Once** (a date and time that must be in the future) |
 | Time zone | The schedule's time zone. Times that do not exist because of a daylight-saving change run at the first valid minute |
-| Start and End | Optional; the task does not run outside them |
+| Start and End | Optional; the task does not run outside them. Each has a date field (dd/mm/yy) and a time field (hh:mm, 24-hour); a date without a time means 00:00. A Once task needs both (Run at) |
 | If runs were missed | Skip, Run once, or Run all (up to RunAllMisfireCap) for runs more than 60 seconds late |
 | Priority | 1 = highest, 10 = lowest. Higher priority runs first when several tasks are due |
 | Retries after a failure, Time-out (seconds) | Empty uses the global settings |
@@ -91,7 +91,9 @@ Administrators can **Cancel** a waiting entry. **Refresh** reloads the list.
 ## 6. Execution history
 
 Every run with its status (Running, Success, Failed, Retrying, TimedOut or Cancelled), trigger, start time,
-duration, retry number and host. Filter by task, status and date range, then **Apply**. Click a row to see its
+duration, retry number and host. Filter by task, status and date range, then **Apply**. Dates are typed as
+dd/mm/yy (for example 30/10/26) or chosen with the calendar icon; From starts at the beginning of that day and To
+includes the whole day. Leave a date empty for no limit. The Error log and Reports date fields work the same way. Click a row to see its
 output, error and log entries. **Print** prints the current list.
 
 > Screenshot placeholder: execution history with the detail panel open.

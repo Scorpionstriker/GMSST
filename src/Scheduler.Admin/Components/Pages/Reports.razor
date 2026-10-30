@@ -31,8 +31,8 @@
             <option value="@ReportType.SecurityAudit">Security and audit</option>
         </select>
     </div>
-    <div class="field"><label for="from">From</label><input id="from" type="date" @bind="_from" /></div>
-    <div class="field"><label for="to">To</label><input id="to" type="date" @bind="_to" /></div>
+    <div class="field"><label for="from">From</label><DateField Id="from" @bind-Value="_from" /></div>
+    <div class="field"><label for="to">To</label><DateField Id="to" @bind-Value="_to" /></div>
     @if (_type != ReportType.SecurityAudit)
     {
         <div class="field">
@@ -125,8 +125,8 @@
 
 @code {
     private ReportType _type = ReportType.ExecutionSummary;
-    private DateTime _from = DateTime.Today.AddDays(-7);
-    private DateTime _to = DateTime.Today;
+    private DateTime? _from = DateTime.Today.AddDays(-7);
+    private DateTime? _to = DateTime.Today;
     private Guid? _task;
     private ExecutionStatus? _status;
     private bool? _succeeded;
@@ -159,9 +159,13 @@
         _busy = true;
         try
         {
-            // The whole of the "To" day is included.
-            _range = (Display.ToUtc(_from.Date)!.Value, Display.ToUtc(_to.Date.AddDays(1))!.Value);
-            _dates = (DateOnly.FromDateTime(_from), DateOnly.FromDateTime(_to));
+            // An empty date falls back to the default range; the whole of the "To" day is included.
+            _from ??= DateTime.Today.AddDays(-7);
+            _to ??= DateTime.Today;
+            var from = _from.Value.Date;
+            var to = _to.Value.Date;
+            _range = (Display.ToUtc(from)!.Value, Display.ToUtc(to.AddDays(1))!.Value);
+            _dates = (DateOnly.FromDateTime(from), DateOnly.FromDateTime(to));
             var query = new GenerateReportQuery(_type, _range.From, _range.To,
                 _type == ReportType.SecurityAudit ? null : _task,
                 _type is ReportType.ExecutionSummary or ReportType.FailuresAndErrors or ReportType.Performance ? _status : null,
