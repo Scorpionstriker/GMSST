@@ -7,7 +7,8 @@ Projects: `Scheduler.Extensibility`, `Scheduler.Modules.Security`.
 `IAuthenticationProvider`, `IAuditLog`, `IModuleDatabases`, `IRestoreGuard`, `IManagedApplication` (Launch and
 Stop on the Modules page) and the scheduler events. A module can be switched off and on at run time on the Modules
 page (`ISchedulerModule.CanBeDisabled`, `OnEnabledChangedAsync`); every module is on by default.
-Modules reference only this project.
+Modules reference only this project. The Admin GUI itself is listed as the first module (`src/Scheduler.Admin/AdminGuiModule.cs`):
+it provides the core pages and menu entries and cannot be switched off.
 
 `Scheduler.Modules.Security` is the Login and Security module, built as an example of a module. It can
 be removed by deleting its line in `src/Scheduler.Admin/ModuleCatalog.cs` and its project reference. Without

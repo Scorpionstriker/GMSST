@@ -14,7 +14,8 @@
     <h1>Modules</h1>
     <div class="actions"><button class="btn" @onclick="RefreshAsync" disabled="@_refreshing">Refresh</button></div>
 </div>
-<p class="muted">The modules loaded into this application, the pages they add and the task types each one provides. Switch a module off to
+<p class="muted">The modules loaded into this application, the pages they add and the task types each one provides. The first one is
+    this administration GUI itself, which provides the core pages. Switch a module off to
     disconnect it without removing it: its menu entries and pages are hidden, its tasks wait and its application is stopped until it is switched on
     again, when the application is launched again if it was running. Every module is on by default. Launch and Stop start and stop a module's
     application. To remove a module for good, take it out of ModuleCatalog.cs and remove its
@@ -92,7 +93,12 @@
                             }
                         </td>
                         <td>
-                            @if (app is null)
+                            @if (module.Name == AdminGuiModule.ModuleName)
+                            {
+                                <StatusBadge Text="Running" Tone="success" />
+                                <div class="hint">This is the application you are using. Close the window to stop it.</div>
+                            }
+                            else if (app is null)
                             {
                                 <span class="muted">None</span>
                             }
