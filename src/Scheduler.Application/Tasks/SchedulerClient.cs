@@ -102,9 +102,7 @@ internal sealed class SchedulerClient(
     public async Task<bool> RunNowAsync(string taskNameOrSystemKey, CancellationToken cancellationToken = default)
     {
         await using var unitOfWork = unitOfWorkFactory.Create();
-        var task = await unitOfWork.Tasks.FindBySystemKeyAsync(taskNameOrSystemKey, cancellationToken) is { IsDeleted: false } byKey
-            ? byKey
-            : await unitOfWork.Tasks.FindByNameAsync(taskNameOrSystemKey, includeDeleted: false, cancellationToken);
+        var task = await FindAsync(unitOfWork, taskNameOrSystemKey, cancellationToken);
         if (task is null || task.Status == ScheduledTaskStatus.Disabled)
         {
             return false;
@@ -118,6 +116,47 @@ internal sealed class SchedulerClient(
         engine.Wake();
         return true;
     }
+
+    public async Task<ScheduledTaskStatus?> GetTaskStatusAsync(string taskNameOrSystemKey, CancellationToken cancellationToken = default)
+    {
+        await using var unitOfWork = unitOfWorkFactory.Create();
+        return (await FindAsync(unitOfWork, taskNameOrSystemKey, cancellationToken))?.Status;
+    }
+
+    public async Task<bool> SetTaskActiveAsync(string taskNameOrSystemKey, bool active, CancellationToken cancellationToken = default)
+    {
+        await using var unitOfWork = unitOfWorkFactory.Create();
+        var task = await FindAsync(unitOfWork, taskNameOrSystemKey, cancellationToken);
+        var target = active ? ScheduledTaskStatus.Active : ScheduledTaskStatus.Paused;
+        if (task is null || task.Status == ScheduledTaskStatus.Disabled)
+        {
+            return false;
+        }
+
+        if (task.Status == target)
+        {
+            return true;
+        }
+
+        var now = clock.GetUtcNow().UtcDateTime;
+        if (active)
+        {
+            task.Resume(now, null);
+        }
+        else
+        {
+            task.Pause(now, null);
+        }
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        engine.Wake();
+        return true;
+    }
+
+    private static async Task<ScheduledTask?> FindAsync(IUnitOfWork unitOfWork, string taskNameOrSystemKey, CancellationToken cancellationToken) =>
+        await unitOfWork.Tasks.FindBySystemKeyAsync(taskNameOrSystemKey, cancellationToken) is { IsDeleted: false } byKey
+            ? byKey
+            : await unitOfWork.Tasks.FindByNameAsync(taskNameOrSystemKey, includeDeleted: false, cancellationToken);
 
     private static async Task<string> FreeNameAsync(IUnitOfWork unitOfWork, string name, CancellationToken cancellationToken)
     {

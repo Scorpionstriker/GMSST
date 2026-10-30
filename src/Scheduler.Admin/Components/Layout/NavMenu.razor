@@ -1,9 +1,10 @@
 @implements IDisposable
 @inject ICurrentUser CurrentUser
 @inject IEnumerable<ISchedulerModule> Modules
+@inject Scheduler.Application.Modules.IModuleSwitches Switches
 
 @* Menu grouped by purpose (FR-55). Administrator-only entries are hidden from Viewers (FR-49); modules add their
-   own entries, which disappear when the module is removed (FR-41). *@
+   own entries, which disappear when the module is removed (FR-41) or switched off on the Modules page. *@
 <nav class="sidebar no-print" aria-label="Main menu">
     <div class="brand">Generic System Scheduler<small>Administration</small></div>
     @foreach (var group in Groups())
@@ -34,14 +35,22 @@
     ];
 
     private IEnumerable<IGrouping<string, ModuleMenuItem>> Groups() =>
-        CoreItems.Concat(Modules.SelectMany(m => m.MenuItems.Select(i => i with { Group = i.Group ?? m.Name })))
+        CoreItems.Concat(Modules.Where(m => Switches.IsEnabled(m.Name)).SelectMany(m => m.MenuItems.Select(i => i with { Group = i.Group ?? m.Name })))
             .Where(i => !i.AdministratorOnly || CurrentUser.IsAdministrator)
             .GroupBy(i => i.Group!)
             .OrderBy(g => Array.IndexOf(GroupOrder, g.Key) is var index and >= 0 ? index : 2.5); // module groups after Monitoring
 
-    protected override void OnInitialized() => CurrentUser.Changed += OnUserChanged;
+    protected override void OnInitialized()
+    {
+        CurrentUser.Changed += OnUserChanged;
+        Switches.Changed += OnUserChanged;
+    }
 
     private void OnUserChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
 
-    public void Dispose() => CurrentUser.Changed -= OnUserChanged;
+    public void Dispose()
+    {
+        CurrentUser.Changed -= OnUserChanged;
+        Switches.Changed -= OnUserChanged;
+    }
 }

@@ -140,7 +140,15 @@ The built-in **Database Backup** task backs up all three databases every night a
 ## 11. Modules
 
 Lists the loaded modules with their description and the pages they add, and every task type with the module that
-provides it.
+provides it. Administrators also control the modules here:
+
+| Control | What it does |
+|---|---|
+| **On** slider | Switches a module off or on. A switched-off module stays installed but is disconnected: its menu entries and pages are hidden, tasks of its types wait instead of running, and its application is stopped. Switching it on reconnects it and launches its application again if it was running. Every module is on by default, and the choice is remembered on this computer. Login and Security is always on. |
+| **Launch** / **Stop** | Starts or stops the module's application. For the Maintenance Agent connector this starts the separate Maintenance Agent program in the background (no terminal needed) and stops it again; for the Inventory Monitor it resumes or pauses its three scheduled tasks, and Launch also runs a stock report and a low-stock check straight away. |
+
+The first launch of the Maintenance Agent builds it, which can take up to a minute. An agent launched from the
+Admin application is stopped when the Admin application closes.
 
 ## 12. Help
 
@@ -161,8 +169,9 @@ Changes need the Administrator role.
 
 **Managed apps > Maintenance Agent** shows whether the separate Maintenance Agent application is running, since
 when, its database, the last health check and the last clean-up. **Run health check now** runs the health-check
-task. If the agent is not running, the page says so and the health-check task fails with a clear message in the
-Error log.
+task. If the agent is not running, the page says so and offers **Launch Maintenance Agent**; while it runs,
+**Stop Maintenance Agent** stops it. If the agent is not running, the health-check task fails with a clear message in
+the Error log.
 
 ## 15. Users (administrators)
 

@@ -22,7 +22,9 @@ public sealed class MaintenanceAgentConnectorModule : ISchedulerModule
     public const string HealthCheckKey = "maintenance.health-check";
     public const string CleanupKey = "maintenance.temp-cleanup";
 
-    public string Name => "Maintenance Agent connector";
+    public const string ModuleName = "Maintenance Agent connector";
+
+    public string Name => ModuleName;
 
     public string Description => "Manages the separate Maintenance Agent application through Local HTTP Request tasks and shows its status.";
 
@@ -35,6 +37,19 @@ public sealed class MaintenanceAgentConnectorModule : ISchedulerModule
     {
         services.AddSingleton(sp => new AgentClient(sp.GetService<IConfiguration>()));
         services.AddSingleton<IRestoreGuard, MaintenanceAgentRestoreGuard>();
+        services.AddSingleton(sp => new MaintenanceAgentLauncher(sp.GetRequiredService<AgentClient>(), sp.GetService<IConfiguration>()));
+        services.AddSingleton<IManagedApplication>(sp => sp.GetRequiredService<MaintenanceAgentLauncher>());
+    }
+
+    /// <summary>
+    /// The two tasks use the built-in Local HTTP Request type, which keeps running when this module is switched off, so
+    /// they are paused while the module is off and resumed when it is switched on again.
+    /// </summary>
+    public async Task OnEnabledChangedAsync(IServiceProvider services, bool enabled, CancellationToken cancellationToken)
+    {
+        var client = services.GetRequiredService<ISchedulerClient>();
+        await client.SetTaskActiveAsync(HealthCheckKey, enabled, cancellationToken);
+        await client.SetTaskActiveAsync(CleanupKey, enabled, cancellationToken);
     }
 
     public async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)

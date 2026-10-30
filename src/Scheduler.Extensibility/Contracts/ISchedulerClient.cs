@@ -22,6 +22,15 @@ public interface ISchedulerClient
     /// runnable task matches.
     /// </summary>
     Task<bool> RunNowAsync(string taskNameOrSystemKey, CancellationToken cancellationToken = default);
+
+    /// <summary>The status of the task with this system key or, if none has it, this name; null when there is no such task.</summary>
+    Task<ScheduledTaskStatus?> GetTaskStatusAsync(string taskNameOrSystemKey, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pauses (<paramref name="active"/> false) or resumes the task with this system key or, if none has it, this
+    /// name. A disabled task is left disabled. Returns false when no task matches or the change is not allowed.
+    /// </summary>
+    Task<bool> SetTaskActiveAsync(string taskNameOrSystemKey, bool active, CancellationToken cancellationToken = default);
 }
 
 /// <summary>A task and its schedule, as created through <see cref="ISchedulerClient"/>.</summary>

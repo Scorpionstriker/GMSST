@@ -93,7 +93,9 @@ In short, on Windows:
    `GMSS_DB_PASSWORD` and `GSST_AGENT_KEY`. Passwords are never stored in a file (NFR-15). Reopen Visual Studio.
 3. Open `GSST.slnx`, start `Scheduler.Admin` on "Windows Machine" and create the first administrator.
    There is no default password.
-4. Start the Maintenance Agent: `dotnet run --project demos\DemoApps.MaintenanceAgent`.
+4. Start the Maintenance Agent with **Launch** on the Modules page (or on Managed apps > Maintenance Agent), or from
+   a terminal: `dotnet run --project demos\DemoApps.MaintenanceAgent`. Modules can be switched off and on with the
+   sliders on the Modules page.
 
 ## Building and testing
 

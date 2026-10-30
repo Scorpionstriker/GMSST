@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Scheduler.Admin.Services;
 using Scheduler.Application;
 using Scheduler.Application.Configuration;
+using Scheduler.Application.Modules;
 using Scheduler.Engine;
 using Scheduler.Infrastructure;
 using Scheduler.Infrastructure.Configuration;
@@ -45,6 +46,7 @@ public static class MauiProgram
             .AddJsonFile(machineSettings.FilePath, optional: true, reloadOnChange: true)
             .AddEnvironmentVariables("GSST_");
         builder.Services.AddSingleton<IMachineSettingsStore>(machineSettings);
+        builder.Services.AddSingleton<IModuleStateStore>(machineSettings);
 #if WINDOWS
         builder.Services.AddSingleton<IFolderPicker, Scheduler.Admin.WinUI.WindowsFolderPicker>();
 #else

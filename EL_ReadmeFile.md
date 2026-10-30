@@ -4,7 +4,9 @@ Projects: `Scheduler.Extensibility`, `Scheduler.Modules.Security`.
 
 `Scheduler.Extensibility` contains the stable contracts developers build against: `ITaskHandler`,
 `ITaskContext`, `TaskResult`, `ISchedulerModule`, `ISchedulerClient`, `ILoggingProvider`,
-`IAuthenticationProvider`, `IAuditLog`, `IModuleDatabases`, `IRestoreGuard` and the scheduler events.
+`IAuthenticationProvider`, `IAuditLog`, `IModuleDatabases`, `IRestoreGuard`, `IManagedApplication` (Launch and
+Stop on the Modules page) and the scheduler events. A module can be switched off and on at run time on the Modules
+page (`ISchedulerModule.CanBeDisabled`, `OnEnabledChangedAsync`); every module is on by default.
 Modules reference only this project.
 
 `Scheduler.Modules.Security` is the Login and Security module, built as an example of a module. It can

@@ -8,7 +8,8 @@ using Npgsql;
 // Demonstration app 2 (FR-79, WP-1): a separate application with its own database maintenance_demo and no scheduling
 // engine. The scheduler (the Admin application) manages it by calling this API with Local HTTP Request tasks. It listens
 // only on the loopback addresses, so nothing outside this computer can reach it, and every request must carry the
-// shared key from GSST_AGENT_KEY. Runs on Windows, macOS and Linux. Stop it with Ctrl+C.
+// shared key from GSST_AGENT_KEY. Runs on Windows, macOS and Linux. Stop it with Ctrl+C, or launch and stop it from the
+// scheduler's Modules page.
 var builder = WebApplication.CreateBuilder(args);
 var agent = builder.Configuration.GetSection(AgentOptions.SectionName).Get<AgentOptions>() ?? new AgentOptions();
 var database = builder.Configuration.GetSection(AgentDatabaseOptions.SectionName).Get<AgentDatabaseOptions>() ?? new AgentDatabaseOptions();
@@ -100,6 +101,13 @@ api.MapGet("/status", async (MaintenanceStore store, CancellationToken cancellat
         lastCleanup = cleanup,
         databaseError
     });
+});
+
+// Lets the scheduler's Stop button end the agent; it answers first, then shuts down as Ctrl+C would.
+api.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
+{
+    _ = Task.Delay(TimeSpan.FromMilliseconds(200)).ContinueWith(_ => lifetime.StopApplication(), TaskScheduler.Default);
+    return Results.Json(new { stopping = true });
 });
 
 app.Run();

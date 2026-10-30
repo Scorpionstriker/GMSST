@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Scheduler.Application.Configuration;
+using Scheduler.Application.Modules;
 
 namespace Scheduler.Infrastructure.Configuration;
 
@@ -8,9 +9,10 @@ namespace Scheduler.Infrastructure.Configuration;
 /// The user settings file of this computer (WP-5a): %LOCALAPPDATA%\GSST\appsettings.user.json on Windows and
 /// ~/Library/Application Support/GSST/appsettings.user.json on macOS. It is read as a configuration source after
 /// the embedded appsettings.json, so its values win, and environment variables starting with GSST_ win over both.
-/// It never holds a password. Keys the application does not know are kept when the file is saved.
+/// It never holds a password. Keys the application does not know are kept when the file is saved. It also keeps the
+/// modules an administrator has switched off on the Modules page, under "Modules": { "Disabled": [...] }.
 /// </summary>
-public sealed class MachineSettingsFile(string filePath) : IMachineSettingsStore
+public sealed class MachineSettingsFile(string filePath) : IMachineSettingsStore, IModuleStateStore
 {
     public const string FileName = "appsettings.user.json";
 
@@ -49,14 +51,29 @@ public sealed class MachineSettingsFile(string filePath) : IMachineSettingsStore
         };
     }
 
-    public async Task SaveAsync(MachineSettings settings, CancellationToken cancellationToken = default)
+    public Task SaveAsync(MachineSettings settings, CancellationToken cancellationToken = default) =>
+        WriteAsync(root => ToJson(settings, root), cancellationToken);
+
+    public IReadOnlyCollection<string> GetDisabledModules() =>
+        Read()["Modules"]?["Disabled"] is JsonArray names
+            ? names.OfType<JsonValue>().Select(v => v.TryGetValue<string>(out var name) ? name.Trim() : "").Where(n => n.Length > 0).ToArray()
+            : [];
+
+    public Task SaveDisabledModulesAsync(IReadOnlyCollection<string> moduleNames, CancellationToken cancellationToken = default) =>
+        WriteAsync(root =>
+        {
+            Section(root, "Modules")["Disabled"] = new JsonArray(moduleNames.Select(name => (JsonNode?)JsonValue.Create(name)).ToArray());
+            return root.ToJsonString(WriteOptions);
+        }, cancellationToken);
+
+    private async Task WriteAsync(Func<JsonObject, string> update, CancellationToken cancellationToken)
     {
         await Gate.WaitAsync(cancellationToken);
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
             var temporary = FilePath + ".tmp";
-            await File.WriteAllTextAsync(temporary, ToJson(settings, Read()), cancellationToken);
+            await File.WriteAllTextAsync(temporary, update(Read()), cancellationToken);
             File.Move(temporary, FilePath, overwrite: true);
         }
         finally

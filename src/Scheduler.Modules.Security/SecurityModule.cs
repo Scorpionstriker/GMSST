@@ -18,6 +18,12 @@ public sealed class SecurityModule : ISchedulerModule
 
     public string Description => "Local user accounts, sign-in with lockout, roles, session time-out, registration and password recovery.";
 
+    /// <summary>
+    /// Sign-in cannot be switched off on the Modules page: that would let anyone in. To run without sign-in, remove the
+    /// module from the module list or use the developer login bypass.
+    /// </summary>
+    public bool CanBeDisabled => false;
+
     public IReadOnlyList<ModuleMenuItem> MenuItems { get; } =
     [
         new("Users", "/users", "Administration", AdministratorOnly: true),

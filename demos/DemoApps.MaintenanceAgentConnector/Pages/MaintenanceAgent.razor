@@ -1,5 +1,6 @@
 @page "/managed/maintenance-agent"
 @inject AgentClient Agent
+@inject MaintenanceAgentLauncher Launcher
 @inject ISchedulerClient Scheduler
 @inject ICurrentUser CurrentUser
 
@@ -9,7 +10,15 @@
         <button class="btn" @onclick="LoadAsync" disabled="@_loading">Refresh</button>
         @if (CurrentUser.IsAdministrator)
         {
-            <button class="btn btn-primary" @onclick="RunHealthCheckAsync">Run health check now</button>
+            @if (_result is { Running: false })
+            {
+                <button class="btn btn-primary" @onclick="LaunchAsync" disabled="@_busy">@(_busy ? "Launching…" : "Launch Maintenance Agent")</button>
+            }
+            else if (_result is { Running: true })
+            {
+                <button class="btn" @onclick="StopAsync" disabled="@_busy">@(_busy ? "Stopping…" : "Stop Maintenance Agent")</button>
+                <button class="btn btn-primary" @onclick="RunHealthCheckAsync" disabled="@_busy">Run health check now</button>
+            }
         }
     </div>
 </div>
@@ -25,13 +34,21 @@
     <div class="banner banner-info" role="status">@_notice</div>
 }
 
+@if (_error is not null)
+{
+    <div class="banner banner-error" role="alert">@_error</div>
+}
+
 @if (_result is null)
 {
     <p class="muted">Checking the Maintenance Agent…</p>
 }
 else if (!_result.Running)
 {
-    <div class="banner banner-error" role="alert">@_result.Message Start it with: dotnet run --project demos/DemoApps.MaintenanceAgent</div>
+    <div class="banner banner-error" role="alert">
+        @_result.Message
+        @(CurrentUser.IsAdministrator ? "Select Launch Maintenance Agent to start it, or start it yourself with: dotnet run --project demos/DemoApps.MaintenanceAgent" : "Ask an administrator to launch it.")
+    </div>
 }
 else if (_result.Status is not { } status)
 {
@@ -84,7 +101,9 @@ else
 @code {
     private AgentStatusResult? _result;
     private string? _notice;
+    private string? _error;
     private bool _loading;
+    private bool _busy;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -98,6 +117,39 @@ else
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task LaunchAsync()
+    {
+        _busy = true;
+        _notice = "Launching the Maintenance Agent. The first launch builds it, which can take up to a minute…";
+        try
+        {
+            var result = await Launcher.StartAsync();
+            _notice = result.Succeeded ? result.Message : null;
+            _error = result.Succeeded ? null : result.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task StopAsync()
+    {
+        _busy = true;
+        try
+        {
+            var result = await Launcher.StopAsync();
+            _notice = result.Succeeded ? result.Message : null;
+            _error = result.Succeeded ? null : result.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
         }
     }
 

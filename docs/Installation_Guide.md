@@ -94,11 +94,17 @@ database, its engine stays stopped and a banner names the computer whose engine 
 The Maintenance Agent is a separate application with its own database (`maintenance_demo`). The scheduler manages
 it by calling its local web interface on `http://127.0.0.1:5087` with the shared key.
 
+The easiest way is **Launch** on the Modules page (or **Launch Maintenance Agent** on Managed apps > Maintenance
+Agent). The Admin application finds `demos\DemoApps.MaintenanceAgent` in the folders above it, runs it in the
+background with `dotnet run` and stops it again with **Stop** or when the Admin application closes. If the Admin
+application runs from somewhere else, set `MaintenanceAgent:LaunchPath` in the user settings file to the agent's
+`.csproj`, its built `.exe` or their folder. To start it by hand instead:
+
 ```
 dotnet run --project demos\DemoApps.MaintenanceAgent
 ```
 
-Leave the window open; stop it with Ctrl+C. It listens on the loopback address only, so nothing outside this
+Leave that window open; stop it with Ctrl+C. It listens on the loopback address only, so nothing outside this
 computer can reach it, and it refuses every request without the `X-GSST-Key` header that matches
 `GSST_AGENT_KEY`. Its settings are in `demos\DemoApps.MaintenanceAgent\appsettings.json` (port, minimum free disk
 space, memory limit, and `Maintenance:AllowedCleanupRoots`).

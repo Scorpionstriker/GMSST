@@ -52,12 +52,7 @@ public sealed class AgentClient
 
     public async Task<AgentStatusResult> GetStatusAsync(CancellationToken cancellationToken = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, BaseUrl + "/status");
-        if (Environment.GetEnvironmentVariable(KeyVariable) is { Length: > 0 } key)
-        {
-            request.Headers.Add(KeyHeader, key);
-        }
-
+        using var request = Request(HttpMethod.Get, "/status");
         try
         {
             using var response = await Client.SendAsync(request, cancellationToken);
@@ -79,5 +74,34 @@ public sealed class AgentClient
         {
             return new AgentStatusResult(false, null, NotRunningMessage);
         }
+    }
+
+    /// <summary>
+    /// Asks the agent to shut down (POST /shutdown). Returns true when it accepted; false when it is not running, refused
+    /// the key, or is an older build without the stop command.
+    /// </summary>
+    public async Task<bool> ShutdownAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = Request(HttpMethod.Post, "/shutdown");
+        try
+        {
+            using var response = await Client.SendAsync(request, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return false;
+        }
+    }
+
+    private HttpRequestMessage Request(HttpMethod method, string path)
+    {
+        var request = new HttpRequestMessage(method, BaseUrl + path);
+        if (Environment.GetEnvironmentVariable(KeyVariable) is { Length: > 0 } key)
+        {
+            request.Headers.Add(KeyHeader, key);
+        }
+
+        return request;
     }
 }

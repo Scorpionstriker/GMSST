@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Scheduler.Application.Common;
+using Scheduler.Application.Modules;
 using Scheduler.Application.Tasks;
 using Scheduler.Extensibility.Contracts;
 
@@ -21,6 +22,8 @@ public static class DependencyInjection
         services.TryAddSingleton<ICurrentUser, LocalAdministrator>();
         services.TryAddSingleton<IEngineSignal, NullEngineSignal>();
         services.TryAddSingleton<ISchedulerEventPublisher, NullEventPublisher>();
+        services.TryAddSingleton<IModuleStateStore, InMemoryModuleStateStore>();
+        services.TryAddSingleton<IModuleSwitches, ModuleSwitches>();
         services.TryAddSingleton<ITaskTypeRegistry, TaskTypeRegistry>();
         services.TryAddSingleton<ISchedulerClient, SchedulerClient>();
         services.TryAddSingleton<ILoginBypass, NoLoginBypass>();

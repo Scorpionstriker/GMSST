@@ -347,6 +347,8 @@ the Maintenance Agent running.
 | MC-20 | Set a processed queue entry, an execution and a login audit row older than the retention periods with psql `UPDATE`, then Run now the Log Clean-up task | The old queue entry, history and audit are removed; an execution whose queue entry was purged stays with an empty queue reference | Not run yet |
 | MC-21 | Developer check: set the PostgreSQL tools folder to a wrong folder, add a new migration and start the Admin app | Start-up stops with the safety-backup message and the migration is not applied | Not run yet |
 | MC-22 | Open a task in the editor, change the same task with psql `UPDATE scheduler.task SET description = 'x'`, then Save in the editor | The editor reports that someone else changed the task | Not run yet |
+| MC-23 | Modules: Launch the Maintenance Agent, open Managed apps > Maintenance Agent, then Stop it there; Stop and Launch the Inventory Monitor; close the Admin app while the agent runs | The agent starts without a terminal and shows Running; Stop ends it; Inventory Stop pauses its three tasks and Launch resumes them and queues a stock report and a low-stock check; closing the Admin app ends the agent it launched | Not run yet |
+| MC-24 | Modules: switch the Inventory Monitor off, open the menu and an old link to /inventory/products, Run now an Inventory task; switch it on again; restart the Admin app with it off; try to switch Login and Security off | Its menu entries disappear, the link shows "Module switched off", the run waits in the Queue; after switching on, the run happens and the menu is back; after a restart it is still off; Login and Security cannot be switched off | Not run yet |
 
 ## 4. Click-through checklist
 
