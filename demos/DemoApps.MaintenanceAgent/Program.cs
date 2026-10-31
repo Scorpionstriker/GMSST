@@ -13,6 +13,22 @@ using Npgsql;
 var builder = WebApplication.CreateBuilder(args);
 var agent = builder.Configuration.GetSection(AgentOptions.SectionName).Get<AgentOptions>() ?? new AgentOptions();
 var database = builder.Configuration.GetSection(AgentDatabaseOptions.SectionName).Get<AgentDatabaseOptions>() ?? new AgentDatabaseOptions();
+var schedulerHealthDatabase = builder.Configuration.GetSection("SchedulerHealthDatabase").Get<AgentDatabaseOptions>()
+                              ?? new AgentDatabaseOptions { Name = "gmss" };
+var inventoryHealthDatabase = builder.Configuration.GetSection("InventoryHealthDatabase").Get<AgentDatabaseOptions>()
+                              ?? new AgentDatabaseOptions { Name = "inventory_demo" };
+
+static NpgsqlDataSource CreateDataSource(AgentDatabaseOptions options, string applicationName, int timeoutSeconds = 15) =>
+    new NpgsqlDataSourceBuilder(new NpgsqlConnectionStringBuilder
+    {
+        Host = options.Host,
+        Port = options.Port,
+        Database = options.Name,
+        Username = options.Username,
+        Password = Environment.GetEnvironmentVariable(AgentDatabaseOptions.PasswordVariable),
+        Timeout = timeoutSeconds,
+        ApplicationName = applicationName
+    }.ConnectionString).Build();
 
 builder.WebHost.ConfigureKestrel(kestrel =>
 {
@@ -27,15 +43,10 @@ builder.WebHost.ConfigureKestrel(kestrel =>
 builder.Services.Configure<MaintenanceOptions>(builder.Configuration.GetSection(MaintenanceOptions.SectionName));
 builder.Services.Configure<AgentOptions>(builder.Configuration.GetSection(AgentOptions.SectionName));
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton(new NpgsqlDataSourceBuilder(new NpgsqlConnectionStringBuilder
-{
-    Host = database.Host,
-    Port = database.Port,
-    Database = database.Name,
-    Username = database.Username,
-    Password = Environment.GetEnvironmentVariable(AgentDatabaseOptions.PasswordVariable),
-    ApplicationName = "GSST Maintenance Agent"
-}.ConnectionString).Build());
+builder.Services.AddSingleton(_ => CreateDataSource(database, "GSST Maintenance Agent"));
+builder.Services.AddSingleton(_ => new HealthDatabaseChecker(
+    CreateDataSource(schedulerHealthDatabase, "GSST Scheduler health check", timeoutSeconds: 5),
+    CreateDataSource(inventoryHealthDatabase, "GSST Inventory health check", timeoutSeconds: 5)));
 builder.Services.AddSingleton<MaintenanceStore>();
 builder.Services.AddSingleton<HealthChecker>();
 builder.Services.AddSingleton<TempFileCleaner>();

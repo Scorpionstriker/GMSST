@@ -39,6 +39,8 @@ public sealed class LoginBypassTests
 
         Assert.Equal(AdminAccessMode.Bypassed, AdminAccess.Evaluate(HasLoginModule(services), bypass.IsOn));
         Assert.True(user.IsAdministrator);
+        Assert.True(user.IsDeveloper);
+        Assert.Equal(UserRole.Developer, user.Role);
         Assert.Equal(AdminAccess.BypassUsername, user.Username);
     }
 
@@ -52,6 +54,7 @@ public sealed class LoginBypassTests
 
         Assert.Equal(AdminAccessMode.Bypassed, AdminAccess.Evaluate(HasLoginModule(services), bypass.IsOn));
         Assert.True(user.IsAdministrator);
+        Assert.True(user.IsDeveloper);
 
         bypass.Set(false);
         Assert.Equal(1, changes);

@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using DemoApps.MaintenanceAgent.Services;
 using DemoApps.MaintenanceAgentConnector;
@@ -111,6 +114,35 @@ public class HandlerTests
     }
 
     [Fact]
+    public async Task LocalHttp_IncludesOptedInFailureResponseInErrorMessage()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        const string responseBody = """{"healthy":false,"message":"Inventory database: unhealthy"}""";
+        var server = Task.Run(async () =>
+        {
+            using var client = await listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+            using var reader = new StreamReader(stream, leaveOpen: true);
+            while ((await reader.ReadLineAsync()) is { Length: > 0 })
+            {
+            }
+
+            var response = $"HTTP/1.1 503 Service Unavailable\r\nContent-Length: {Encoding.UTF8.GetByteCount(responseBody)}\r\nConnection: close\r\n\r\n{responseBody}";
+            await stream.WriteAsync(Encoding.UTF8.GetBytes(response));
+        });
+        var result = await new LocalHttpRequestHandler().ExecuteAsync(new FakeContext(
+            $$"""{"url":"http://127.0.0.1:{{port}}/health","expectedStatus":200,"includeResponseInError":true}"""));
+        await server;
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(responseBody, result.Message);
+        var output = JsonDocument.Parse(JsonSerializer.Serialize(result.Output)).RootElement;
+        Assert.Equal(responseBody, output.GetProperty("response").GetString());
+    }
+
+    [Fact]
     public void AgentKey_IsRequiredAndCompared()
     {
         Assert.True(new AgentKeyFilter("abc").IsValid("abc"));
@@ -124,11 +156,14 @@ public class HandlerTests
     public void Connector_TaskPayloadKeepsTheKeyOutOfTheDatabase()
     {
         var payload = JsonDocument.Parse(MaintenanceAgentConnectorModule.BuildPayload(new AgentClient(), "/health", "GET")).RootElement;
+        var healthPayload = JsonDocument.Parse(MaintenanceAgentConnectorModule.BuildPayload(
+            new AgentClient(), "/health", "GET", includeResponseInError: true)).RootElement;
 
         Assert.Equal("http://127.0.0.1:5087/health", payload.GetProperty("url").GetString());
         Assert.Equal("env:GSST_AGENT_KEY", payload.GetProperty("headers").GetProperty("X-GSST-Key").GetString());
         Assert.Equal("The Maintenance Agent is not running on port 5087.", payload.GetProperty("notRunningMessage").GetString());
         Assert.False(payload.TryGetProperty("body", out _));
+        Assert.True(healthPayload.GetProperty("includeResponseInError").GetBoolean());
     }
 
     private sealed class FakeContext(string payload) : ITaskContext

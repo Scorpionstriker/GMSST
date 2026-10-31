@@ -3,6 +3,7 @@
 @inject ICommandHandler<UpdateMachineSettingsCommand, Unit> UpdateMachineSettings
 @inject IFolderPicker FolderPicker
 @inject ToastService Toasts
+@inject ICurrentUser CurrentUser
 
 @* WP-5a: settings of this computer, kept in the user settings file rather than the database, so a restored
    backup never brings another computer's folders with it. Administrators only (the use cases check the role). *@
@@ -77,16 +78,19 @@
             <FieldError Result="_saved" Field="MaintenanceAgentUrl" />
         </div>
 
-        <div class="field checkbox">
-            <label>
-                <input type="checkbox" @bind="_form.AllowLoginBypass" />
-                Allow login bypass (developer mode)
-            </label>
-            <span class="hint">
-                Only for development. When it is on and saved, the Admin application opens without signing in, as a local administrator,
-                and shows a red warning on every page. Changing it is recorded in the audit log.
-            </span>
-        </div>
+        @if (CurrentUser.IsDeveloper)
+        {
+            <div class="field checkbox">
+                <label>
+                    <input type="checkbox" @bind="_form.AllowLoginBypass" />
+                    Allow login bypass (developer mode)
+                </label>
+                <span class="hint">
+                    Developer super-admin only. When enabled, the Admin application opens without signing in as a Developer
+                    and shows a red warning on every page. Changing it is recorded in the audit log.
+                </span>
+            </div>
+        }
 
         <div class="actions">
             <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">@(_saving ? "Saving…" : "Save")</button>

@@ -152,8 +152,8 @@ The Login and Security module can be removed from the solution (FR-44). Without 
 "No login module is installed. Install the Login and Security module, or turn on Security:AllowLoginBypass for
 development."
 
-For development you can open the app without signing in: set `"Security": { "AllowLoginBypass": true }` in the user
-settings file, or tick the option on **Configuration > This computer** as an administrator. Every page then shows a
+Only a signed-in Developer super-admin can enable login bypass from **Configuration > This computer**. The bypass is
+for development only; it is not available to Administrators or Viewers. Every page then shows a
 red banner: "Login bypassed (developer mode). Anyone using this computer has full access." Turning the bypass on or
 off is recorded in the Security and audit report. Never leave it on for a computer other people use.
 

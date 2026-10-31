@@ -77,7 +77,7 @@ internal sealed class UpdateMachineSettingsValidator : IValidator<UpdateMachineS
             && (uri.IsLoopback || (System.Net.IPAddress.TryParse(uri.Host.Trim('[', ']'), out var address) && System.Net.IPAddress.IsLoopback(address))));
 }
 
-/// <summary>Saves the user settings file. Turning the login bypass on or off is recorded with the user responsible (WP-4a).</summary>
+/// <summary>Saves the user settings file. Only a Developer can change the login bypass (WP-4a).</summary>
 internal sealed class UpdateMachineSettingsHandler(IMachineSettingsStore store, ICurrentUser currentUser, ISchedulerLogger log)
     : ICommandHandler<UpdateMachineSettingsCommand, Unit>
 {
@@ -92,6 +92,11 @@ internal sealed class UpdateMachineSettingsHandler(IMachineSettingsStore store, 
             LogFolder = command.Settings.LogFolder.Trim(),
             MaintenanceAgentUrl = command.Settings.MaintenanceAgentUrl.Trim()
         };
+
+        if (before.AllowLoginBypass != after.AllowLoginBypass && !currentUser.IsDeveloper)
+        {
+            return Result.Failure<Unit>(Error.Forbidden);
+        }
 
         await store.SaveAsync(after, cancellationToken);
         var user = currentUser.Username ?? "the local user";

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Scheduler.Application;
 using Scheduler.Application.Common;
 using Scheduler.Application.Common.Persistence;
+using Scheduler.Application.Configuration;
 using Scheduler.Application.Tasks;
 using Scheduler.Domain.Enums;
 using Scheduler.Extensibility.Contracts;
@@ -84,6 +85,30 @@ public class ApplicationWiringTests
     }
 
     [Fact]
+    public async Task Administrator_CannotChangeDeveloperLoginBypass()
+    {
+        var store = new TestMachineSettingsStore();
+        var handler = new UpdateMachineSettingsHandler(store, new Administrator(), new NullSchedulerLogger());
+
+        var result = await handler.HandleAsync(new UpdateMachineSettingsCommand(new MachineSettings { AllowLoginBypass = true }));
+
+        Assert.Equal(ErrorKind.Forbidden, result.Error!.Kind);
+        Assert.False(store.Get().AllowLoginBypass);
+    }
+
+    [Fact]
+    public async Task Developer_CanChangeLoginBypass()
+    {
+        var store = new TestMachineSettingsStore();
+        var handler = new UpdateMachineSettingsHandler(store, new Developer(), new NullSchedulerLogger());
+
+        var result = await handler.HandleAsync(new UpdateMachineSettingsCommand(new MachineSettings { AllowLoginBypass = true }));
+
+        Assert.True(result.IsSuccess);
+        Assert.True(store.Get().AllowLoginBypass);
+    }
+
+    [Fact]
     public void TwoHandlersForTheSameTaskType_FailWithAClearMessage()
     {
         using var provider = Build(services =>
@@ -136,6 +161,20 @@ public class ApplicationWiringTests
     {
         public Task<Result<Guid>> HandleAsync(DeveloperOnlyCommand command, CancellationToken cancellationToken = default) =>
             Task.FromResult(Result.Success(Guid.NewGuid()));
+    }
+
+    private sealed class TestMachineSettingsStore : IMachineSettingsStore
+    {
+        private MachineSettings _settings = new();
+
+        public string FilePath => "settings.json";
+        public MachineSettings Get() => _settings;
+
+        public Task SaveAsync(MachineSettings settings, CancellationToken cancellationToken = default)
+        {
+            _settings = settings;
+            return Task.CompletedTask;
+        }
     }
 
     // The authorisation check must refuse before any validator or handler reaches the database.

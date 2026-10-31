@@ -6,7 +6,7 @@ namespace Scheduler.Application.Common;
 
 /// <summary>
 /// The developer login bypass, Security:AllowLoginBypass (WP-4a, FR-44). It is off by default and can be switched on
-/// only in the user settings file of this computer or by an Administrator on the Configuration page.
+/// only in the user settings file of this computer or by a Developer on the Configuration page.
 /// </summary>
 public interface ILoginBypass
 {
@@ -37,7 +37,7 @@ public enum AdminAccessMode
     /// <summary>No login module is installed and the bypass is off: the pages stay closed.</summary>
     Blocked,
 
-    /// <summary>The bypass is on: the pages open as the local administrator, with a red banner.</summary>
+    /// <summary>The bypass is on: the pages open as the local Developer, with a red banner.</summary>
     Bypassed
 }
 
@@ -48,14 +48,14 @@ public static class AdminAccess
 
     public const string BypassBanner = "Login bypassed (developer mode). Anyone using this computer has full access.";
 
-    public const string BypassUsername = "Local administrator (login bypassed)";
+    public const string BypassUsername = "Local developer (login bypassed)";
 
     public static AdminAccessMode Evaluate(bool hasLoginModule, bool bypassOn) =>
         bypassOn ? AdminAccessMode.Bypassed : hasLoginModule ? AdminAccessMode.RequireLogin : AdminAccessMode.Blocked;
 
     /// <summary>
-    /// Wraps the registered <see cref="ICurrentUser"/> (the local administrator, or the Login and Security module's
-    /// session) so that it acts as the local administrator while the bypass is on. Call it after the modules are
+    /// Wraps the registered <see cref="ICurrentUser"/> (the local Developer, or the Login and Security module's
+    /// session) so that it acts as the local Developer while the bypass is on. Call it after the modules are
     /// registered; the engine's AddSchedulerModules does this.
     /// </summary>
     public static IServiceCollection UseLoginBypass(this IServiceCollection services)
@@ -86,7 +86,7 @@ public static class AdminAccess
 }
 
 /// <summary>
-/// The current user with the bypass applied: while the bypass is on it is the local administrator, otherwise it is
+/// The current user with the bypass applied: while the bypass is on it is the local Developer, otherwise it is
 /// the wrapped user (WP-4a). <see cref="Changed"/> is raised when either the user or the bypass changes.
 /// </summary>
 public sealed class LoginBypassCurrentUser : ICurrentUser
@@ -106,7 +106,7 @@ public sealed class LoginBypassCurrentUser : ICurrentUser
     public bool IsAuthenticated => IsBypassed || _inner.IsAuthenticated;
     public Guid? UserId => IsBypassed ? null : _inner.UserId;
     public string? Username => IsBypassed ? AdminAccess.BypassUsername : _inner.Username;
-    public UserRole? Role => IsBypassed ? UserRole.Administrator : _inner.Role;
+    public UserRole? Role => IsBypassed ? UserRole.Developer : _inner.Role;
 
     public void RegisterActivity()
     {

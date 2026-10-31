@@ -136,8 +136,9 @@ The built-in **Database Backup** task backs up all three databases every night a
   **Save**. Values outside the range are refused with a message.
 - **Task overrides**: give one task its own retry limit or retry delays (**Add override**, **Use global value**).
 - **Logging providers**: switch Database, File, Console and module providers on or off and set the minimum level.
-- **This computer**: folders for backups, the backup copy and logs, the PostgreSQL tools folder, the Maintenance
-  Agent address and the developer login bypass. These are saved in the user settings file on this computer.
+- **This computer**: folders for backups, the backup copy and logs, the PostgreSQL tools folder and the Maintenance
+  Agent address. Only a Developer super-admin can see and change the developer login bypass. These are saved in the
+  user settings file on this computer.
 
 ## 11. Modules
 
@@ -152,6 +153,9 @@ core pages (Dashboard to Help); it is always on and shows as Running. Administra
 
 The first launch of the Maintenance Agent builds it, which can take up to a minute. An agent launched from the
 Admin application is stopped when the Admin application closes.
+
+If the Maintenance Agent is running when the Scheduler closes, the Scheduler asks before stopping it. Cancel leaves
+both applications running; **Stop Agent and Close** shuts down the agent before closing the Scheduler.
 
 ## 12. Help
 
@@ -171,7 +175,9 @@ Changes need the Administrator role.
 ## 14. Maintenance Agent page (demo app 2)
 
 **Managed apps > Maintenance Agent** shows whether the separate Maintenance Agent application is running, since
-when, its database, the last health check and the last clean-up. **Run health check now** runs the health-check
+when, its database, the last health check and the last clean-up. The health check tests the Scheduler and Inventory
+databases as well as its own database, disk and memory; its summary and failure details are recorded in the Scheduler's
+execution log. **Run health check now** runs the health-check
 task. If the agent is not running, the page says so and offers **Launch Maintenance Agent**; while it runs,
 **Stop Maintenance Agent** stops it. If the agent is not running, the health-check task fails with a clear message in
 the Error log.

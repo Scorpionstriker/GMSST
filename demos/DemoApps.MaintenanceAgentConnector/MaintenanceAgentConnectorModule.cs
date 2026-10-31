@@ -61,10 +61,10 @@ public sealed class MaintenanceAgentConnectorModule : ISchedulerModule
             Name = HealthCheckTaskName,
             SystemKey = HealthCheckKey,
             TaskType = LocalHttpRequestType,
-            Description = "Asks the Maintenance Agent to check its database, free disk space and memory, every five minutes.",
+            Description = "Checks the Scheduler and Inventory databases, plus the agent's disk and memory, every five minutes.",
             ScheduleType = ScheduleType.Interval,
             IntervalSeconds = 300,
-            Payload = BuildPayload(agent, "/health", "GET"),
+            Payload = BuildPayload(agent, "/health", "GET", includeResponseInError: true),
             MaxRetries = 0,
             TimeoutSeconds = 30,
             MisfirePolicy = MisfirePolicy.Skip
@@ -83,7 +83,7 @@ public sealed class MaintenanceAgentConnectorModule : ISchedulerModule
         }, cancellationToken);
     }
 
-    internal static string BuildPayload(AgentClient agent, string path, string method, string? body = null) =>
+    internal static string BuildPayload(AgentClient agent, string path, string method, string? body = null, bool includeResponseInError = false) =>
         System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
         {
             ["url"] = agent.BaseUrl + path,
@@ -91,7 +91,8 @@ public sealed class MaintenanceAgentConnectorModule : ISchedulerModule
             ["expectedStatus"] = 200,
             ["headers"] = new Dictionary<string, string> { [AgentClient.KeyHeader] = "env:" + AgentClient.KeyVariable },
             ["notRunningMessage"] = agent.NotRunningMessage,
-            ["body"] = body
+            ["body"] = body,
+            ["includeResponseInError"] = includeResponseInError
         }.Where(p => p.Value is not null).ToDictionary());
 
     private static string LocalZoneId() =>

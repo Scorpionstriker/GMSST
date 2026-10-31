@@ -13,6 +13,7 @@ namespace Scheduler.Engine.Handlers;
 /// WP-1: the optional "headers" object adds request headers. A value written as "env:NAME" is read from the
 /// environment variable NAME when the task runs, so a key such as GSST_AGENT_KEY is never stored in the database or
 /// written to a log. The optional "notRunningMessage" replaces the error text when nothing listens on the port.
+/// "includeResponseInError" includes a response body of at most 2,000 characters in failures when explicitly enabled.
 /// </remarks>
 public sealed class LocalHttpRequestHandler : ITaskHandler
 {
@@ -84,9 +85,18 @@ public sealed class LocalHttpRequestHandler : ITaskHandler
 
             var text = await response.Content.ReadAsStringAsync(context.CancellationToken);
             var output = new { url = uri.GetLeftPart(UriPartial.Path), method, status, response = text.Length <= 2000 ? text : text[..2000] };
+            var failureMessage = $"{method} {uri.GetLeftPart(UriPartial.Path)} returned {status}" +
+                                 (expected is null ? "." : $", expected {expected}.");
+            if (!ok && context.Payload.ValueKind == System.Text.Json.JsonValueKind.Object
+                && context.Payload.TryGetProperty("includeResponseInError", out var includeResponse)
+                && includeResponse.ValueKind == System.Text.Json.JsonValueKind.True)
+            {
+                failureMessage += " Response: " + (text.Length <= 2000 ? text : text[..2000]);
+            }
+
             return ok
                 ? TaskResult.Success($"{method} returned {status}.", output)
-                : TaskResult.Failure($"{method} {uri.GetLeftPart(UriPartial.Path)} returned {status}" + (expected is null ? "." : $", expected {expected}."), output);
+                : TaskResult.Failure(failureMessage, output);
         }
     }
 
