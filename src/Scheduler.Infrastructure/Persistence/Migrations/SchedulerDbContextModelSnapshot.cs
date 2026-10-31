@@ -67,6 +67,16 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("password_salt");
 
+                    b.Property<string>("RecoveryCodeHash")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("recovery_code_hash");
+
+                    b.Property<string>("RecoveryCodeSalt")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("recovery_code_salt");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -82,6 +92,12 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
                         .HasColumnName("username");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -124,6 +140,12 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("config_value");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -273,6 +295,12 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         .HasColumnName("settings")
                         .HasDefaultValueSql("'{}'::jsonb");
 
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ProviderName")
@@ -358,6 +386,12 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         .HasColumnName("enqueued_at")
                         .HasDefaultValueSql("now()");
 
+                    b.Property<bool>("IsManualRun")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_manual_run");
+
                     b.Property<int>("Priority")
                         .HasColumnType("integer")
                         .HasColumnName("priority");
@@ -399,7 +433,7 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                     b.HasIndex("TaskId")
                         .HasDatabaseName("ix_queue_task");
 
-                    b.HasIndex("Priority", "ScheduledTimeUtc")
+                    b.HasIndex("Priority", "ScheduledTimeUtc", "EnqueuedAtUtc")
                         .HasDatabaseName("ix_queue_claim")
                         .HasFilter("queue_status = 'Waiting'");
 
@@ -585,6 +619,11 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
+                    b.Property<string>("SystemKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("system_key");
+
                     b.Property<string>("TaskType")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -617,6 +656,11 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_task_status");
+
+                    b.HasIndex("SystemKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_task_system_key")
+                        .HasFilter("system_key IS NOT NULL");
 
                     b.HasIndex("UpdatedById");
 
@@ -805,6 +849,38 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                     b.ToTable("worker_thread", "scheduler", t =>
                         {
                             t.HasCheckConstraint("ck_worker_thread_status", "status IN ('Idle', 'Busy', 'Stopped')");
+                        });
+                });
+
+            modelBuilder.Entity("Scheduler.Infrastructure.Persistence.EngineInstance", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint")
+                        .HasColumnName("instance_id");
+
+                    b.Property<DateTime>("HeartbeatAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("heartbeat_at");
+
+                    b.Property<string>("HostName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("host_name");
+
+                    b.Property<int>("ProcessId")
+                        .HasColumnType("integer")
+                        .HasColumnName("process_id");
+
+                    b.Property<DateTime>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("engine_instance", "scheduler", t =>
+                        {
+                            t.HasCheckConstraint("ck_engine_instance_single_row", "instance_id = 1");
                         });
                 });
 

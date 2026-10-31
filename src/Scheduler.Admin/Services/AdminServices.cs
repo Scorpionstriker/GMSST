@@ -12,6 +12,7 @@ public static class AdminServices
         services.AddSingleton<IPreferenceStore>(_ => new FilePreferenceStore());
         services.AddSingleton<ThemeService>();
         services.AddSingleton<IFileSaver>(_ => new DocumentsFileSaver());
+        services.AddSingleton<PrintService>();
         return services;
     }
 }

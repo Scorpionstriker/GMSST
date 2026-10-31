@@ -7,6 +7,7 @@
 @inject ICommandHandler<RemoveTaskSettingCommand, Unit> RemoveTaskSetting
 @inject ICommandHandler<UpdateLoggingProviderCommand, Unit> UpdateProvider
 @inject ToastService Toasts
+@inject ICurrentUser CurrentUser
 
 <div class="page-header"><h1>Configuration</h1></div>
 
@@ -114,6 +115,12 @@
         </form>
         <ErrorBanner Message="@_overrideError" />
     </div>
+
+    @* WP-4a: viewers cannot see or change the settings of this computer, which include the login bypass. *@
+    @if (CurrentUser.IsAdministrator)
+    {
+        <MachineSettingsCard />
+    }
 
     <div class="card">
         <h2>Logging providers</h2>

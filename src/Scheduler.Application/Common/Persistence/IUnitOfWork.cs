@@ -40,6 +40,9 @@ public interface ITaskRepository
 
     Task<ScheduledTask?> FindByNameAsync(string name, bool includeDeleted, CancellationToken cancellationToken = default);
 
+    /// <summary>Finds a built-in task by its stable key, deleted tasks included (WP-8h).</summary>
+    Task<ScheduledTask?> FindBySystemKeyAsync(string systemKey, CancellationToken cancellationToken = default);
+
     /// <summary>True when a task that is not deleted has this name, ignoring letter case (FR-05).</summary>
     Task<bool> NameExistsAsync(string name, Guid? exceptTaskId, CancellationToken cancellationToken = default);
 
@@ -57,13 +60,23 @@ public interface ITaskRepository
     Task<IReadOnlyList<ScheduledTask>> GetActiveDependantsAsync(Guid prerequisiteTaskId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Locks and returns active schedules of active tasks whose next run is due, skipping schedules another host
-    /// has locked (FOR UPDATE SKIP LOCKED), so two hosts never queue the same run. Call inside a transaction.
+    /// The "All" rule (WP-6, FR-26): true when every other prerequisite of <paramref name="dependantId"/> has finished
+    /// with Success since the dependant was last triggered by its dependencies. A prerequisite whose latest final run
+    /// since then failed or timed out does not count. <paramref name="succeededTaskId"/> has just succeeded.
     /// </summary>
-    Task<IReadOnlyList<Schedule>> LockDueSchedulesAsync(DateTime nowUtc, int limit, CancellationToken cancellationToken = default);
+    Task<bool> AllPrerequisitesSucceededAsync(Guid dependantId, Guid succeededTaskId, CancellationToken cancellationToken = default);
 
-    /// <summary>Earliest next run of an active schedule of an active task, for the engine's sleep time.</summary>
-    Task<DateTime?> GetEarliestNextRunAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Locks and returns active schedules of active tasks whose next run is due, skipping schedules another host
+    /// has locked (FOR UPDATE SKIP LOCKED), so two hosts never queue the same run. Only tasks whose type is in
+    /// <paramref name="taskTypes"/> are returned, so a task without an installed handler is never queued (WP-1).
+    /// Call inside a transaction.
+    /// </summary>
+    Task<IReadOnlyList<Schedule>> LockDueSchedulesAsync(DateTime nowUtc, int limit, IReadOnlyCollection<string> taskTypes,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Earliest next run of an active schedule of an active task of a registered type, for the engine's sleep time.</summary>
+    Task<DateTime?> GetEarliestNextRunAsync(IReadOnlyCollection<string> taskTypes, CancellationToken cancellationToken = default);
 }
 
 public interface IQueueRepository
@@ -106,8 +119,14 @@ public interface IWorkerRepository
     /// <summary>Updates the heartbeat of this host's running workers.</summary>
     Task HeartbeatAsync(string hostName, DateTime nowUtc, CancellationToken cancellationToken = default);
 
-    /// <summary>Marks workers of any host whose heartbeat is older than <paramref name="staleBeforeUtc"/> as Stopped.</summary>
-    Task<int> MarkStaleAsStoppedAsync(DateTime staleBeforeUtc, DateTime nowUtc, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Marks workers of other hosts whose heartbeat is older than <paramref name="staleBeforeUtc"/> as Stopped.
+    /// The workers of <paramref name="thisHost"/> are skipped: the running engine knows they are alive (WP-1).
+    /// </summary>
+    Task<int> MarkStaleAsStoppedAsync(DateTime staleBeforeUtc, DateTime nowUtc, string thisHost, CancellationToken cancellationToken = default);
+
+    /// <summary>Sets the listed workers of this host back to Idle when something marked them Stopped. Returns how many changed.</summary>
+    Task<int> ReviveStoppedAsync(string hostName, IReadOnlyCollection<Guid> workerIds, DateTime nowUtc, CancellationToken cancellationToken = default);
 
     Task MarkHostStoppedAsync(string hostName, DateTime nowUtc, CancellationToken cancellationToken = default);
 }
@@ -125,7 +144,20 @@ public interface IConfigurationRepository
 /// <summary>Deletes old history in bulk for the Log Clean-up task (FR-35).</summary>
 public interface IRetentionStore
 {
-    Task<RetentionResult> PurgeAsync(DateTime queueBeforeUtc, DateTime historyBeforeUtc, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Deletes processed and cancelled queue entries before <paramref name="queueBeforeUtc"/>; finished executions, their
+    /// errors and log entries before <paramref name="historyBeforeUtc"/>; and the sign-in audit and the Security log
+    /// entries (user management, login bypass) before <paramref name="auditBeforeUtc"/> (FR-35, WP-3c).
+    /// </summary>
+    Task<RetentionResult> PurgeAsync(DateTime queueBeforeUtc, DateTime historyBeforeUtc, DateTime auditBeforeUtc,
+        CancellationToken cancellationToken = default);
 }
 
-public sealed record RetentionResult(int QueueEntries, int Executions, int Errors, int LogEntries);
+public sealed record RetentionResult(int QueueEntries, int Executions, int Errors, int LogEntries, int AuditEntries = 0, int LogFiles = 0);
+
+/// <summary>Deletes the File logging provider's files older than the retention period (WP-3b).</summary>
+public interface ILogFileCleaner
+{
+    /// <summary>Returns the number of files deleted.</summary>
+    int DeleteOlderThan(DateTime beforeUtc);
+}

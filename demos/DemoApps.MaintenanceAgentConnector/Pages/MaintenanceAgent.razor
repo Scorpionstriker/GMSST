@@ -1,0 +1,168 @@
+@page "/managed/maintenance-agent"
+@inject AgentClient Agent
+@inject MaintenanceAgentLauncher Launcher
+@inject ISchedulerClient Scheduler
+@inject ICurrentUser CurrentUser
+
+<div class="page-header">
+    <h1>Maintenance Agent</h1>
+    <div class="actions">
+        <button class="btn" @onclick="LoadAsync" disabled="@_loading">Refresh</button>
+        @if (CurrentUser.IsAdministrator)
+        {
+            @if (_result is { Running: false })
+            {
+                <button class="btn btn-primary" @onclick="LaunchAsync" disabled="@_busy">@(_busy ? "Launching…" : "Launch Maintenance Agent")</button>
+            }
+            else if (_result is { Running: true })
+            {
+                <button class="btn" @onclick="StopAsync" disabled="@_busy">@(_busy ? "Stopping…" : "Stop Maintenance Agent")</button>
+                <button class="btn btn-primary" @onclick="RunHealthCheckAsync" disabled="@_busy">Run health check now</button>
+            }
+        }
+    </div>
+</div>
+
+<p class="muted">
+    The Maintenance Agent is a separate application with its own database. The scheduler manages it by calling
+    @Agent.BaseUrl with the tasks "@MaintenanceAgentConnectorModule.HealthCheckTaskName" and
+    "@MaintenanceAgentConnectorModule.CleanupTaskName". Their results appear in Execution History and the Error Log.
+</p>
+
+@if (_notice is not null)
+{
+    <div class="banner banner-info" role="status">@_notice</div>
+}
+
+@if (_error is not null)
+{
+    <div class="banner banner-error" role="alert">@_error</div>
+}
+
+@if (_result is null)
+{
+    <p class="muted">Checking the Maintenance Agent…</p>
+}
+else if (!_result.Running)
+{
+    <div class="banner banner-error" role="alert">
+        @_result.Message
+        @(CurrentUser.IsAdministrator ? "Select Launch Maintenance Agent to start it, or start it yourself with: dotnet run --project demos/DemoApps.MaintenanceAgent" : "Ask an administrator to launch it.")
+    </div>
+}
+else if (_result.Status is not { } status)
+{
+    <div class="banner banner-warning" role="alert">@_result.Message</div>
+}
+else
+{
+    <div class="card">
+        <table class="table">
+            <tbody>
+                <tr><th>Application</th><td>@status.Name @status.Version</td></tr>
+                <tr><th>Running since</th><td>@status.StartedAtUtc.ToLocalTime().ToString("g") (@Uptime(status.UptimeSeconds))</td></tr>
+                <tr>
+                    <th>Last health check</th>
+                    <td>
+                        @if (status.LastHealth is { } health)
+                        {
+                            <span class="badge @(health.Healthy ? "badge-success" : "badge-danger")">@(health.Healthy ? "Healthy" : "Unhealthy")</span>
+                            @: @health.CheckedAtUtc.ToLocalTime().ToString("g") · @health.Message
+                        }
+                        else
+                        {
+                            <span class="muted">None yet</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <th>Last clean-up</th>
+                    <td>
+                        @if (status.LastCleanup is { } cleanup)
+                        {
+                            <span class="badge @(cleanup.Succeeded ? "badge-success" : "badge-danger")">@(cleanup.Succeeded ? "Success" : "Failed")</span>
+                            @: @cleanup.RanAtUtc.ToLocalTime().ToString("g") · @cleanup.Message
+                        }
+                        else
+                        {
+                            <span class="muted">None yet</span>
+                        }
+                    </td>
+                </tr>
+                @if (status.DatabaseError is { } error)
+                {
+                    <tr><th>Database</th><td><span class="badge badge-danger">Error</span> @error</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private AgentStatusResult? _result;
+    private string? _notice;
+    private string? _error;
+    private bool _loading;
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _result = await Agent.GetStatusAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LaunchAsync()
+    {
+        _busy = true;
+        _notice = "Launching the Maintenance Agent. The first launch builds it, which can take up to a minute…";
+        try
+        {
+            var result = await Launcher.StartAsync();
+            _notice = result.Succeeded ? result.Message : null;
+            _error = result.Succeeded ? null : result.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task StopAsync()
+    {
+        _busy = true;
+        try
+        {
+            var result = await Launcher.StopAsync();
+            _notice = result.Succeeded ? result.Message : null;
+            _error = result.Succeeded ? null : result.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RunHealthCheckAsync()
+    {
+        _notice = await Scheduler.RunNowAsync(MaintenanceAgentConnectorModule.HealthCheckKey)
+            ? "The health check has been queued. Select Refresh in a moment to see the result."
+            : "The health check task was not found or is disabled.";
+    }
+
+    private static string Uptime(long seconds)
+    {
+        var span = TimeSpan.FromSeconds(seconds);
+        return span.TotalDays >= 1 ? $"{(int)span.TotalDays} d {span.Hours} h" : span.TotalHours >= 1 ? $"{(int)span.TotalHours} h {span.Minutes} min" : $"{span.Minutes} min";
+    }
+}

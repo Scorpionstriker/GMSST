@@ -20,9 +20,9 @@ public class RetryPolicyTests
     [Fact]
     public void Retries_StopAtTheLimit_AndForInactiveTasks()
     {
-        Assert.True(RetryPolicy.ShouldRetry(attempt: 2, maxRetries: 3, taskIsActive: true));
-        Assert.False(RetryPolicy.ShouldRetry(attempt: 3, maxRetries: 3, taskIsActive: true));
-        Assert.False(RetryPolicy.ShouldRetry(attempt: 0, maxRetries: 3, taskIsActive: false));
+        Assert.True(RetryPolicy.ShouldRetry(attempt: 2, maxRetries: 3, taskMayRun: true));
+        Assert.False(RetryPolicy.ShouldRetry(attempt: 3, maxRetries: 3, taskMayRun: true));
+        Assert.False(RetryPolicy.ShouldRetry(attempt: 0, maxRetries: 3, taskMayRun: false));
     }
 }
 

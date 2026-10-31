@@ -10,13 +10,27 @@ namespace Scheduler.Extensibility.Contracts;
 public interface ISchedulerClient
 {
     /// <summary>
-    /// Creates the task with its schedule unless a task with the same name already exists (deleted tasks
-    /// included, so a task the administrator deleted is not recreated). Returns the task's id.
+    /// Creates the task with its schedule unless it already exists, and returns the task's id. With a
+    /// <see cref="TaskDefinition.SystemKey"/> the task is found by that key, so the administrator may rename it; an
+    /// older task with the same name and type is taken over and given the key. Without a key the task is found by
+    /// name (deleted tasks included, so a task the administrator deleted is not recreated).
     /// </summary>
     Task<Guid> EnsureTaskAsync(TaskDefinition definition, CancellationToken cancellationToken = default);
 
-    /// <summary>Queues an immediate run of the named task. Returns false when no runnable task has that name.</summary>
-    Task<bool> RunNowAsync(string taskName, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Queues an immediate run of the task with this system key or, if none has it, this name. Returns false when no
+    /// runnable task matches.
+    /// </summary>
+    Task<bool> RunNowAsync(string taskNameOrSystemKey, CancellationToken cancellationToken = default);
+
+    /// <summary>The status of the task with this system key or, if none has it, this name; null when there is no such task.</summary>
+    Task<ScheduledTaskStatus?> GetTaskStatusAsync(string taskNameOrSystemKey, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pauses (<paramref name="active"/> false) or resumes the task with this system key or, if none has it, this
+    /// name. A disabled task is left disabled. Returns false when no task matches or the change is not allowed.
+    /// </summary>
+    Task<bool> SetTaskActiveAsync(string taskNameOrSystemKey, bool active, CancellationToken cancellationToken = default);
 }
 
 /// <summary>A task and its schedule, as created through <see cref="ISchedulerClient"/>.</summary>
@@ -24,6 +38,12 @@ public sealed record TaskDefinition
 {
     public required string Name { get; init; }
     public required string TaskType { get; init; }
+
+    /// <summary>
+    /// Optional stable key, for example "builtin.log-cleanup" or "maintenance.health-check" (WP-8h). A task with a
+    /// key is built in: it can be paused, edited and renamed but not deleted.
+    /// </summary>
+    public string? SystemKey { get; init; }
     public string? Description { get; init; }
     public string Payload { get; init; } = "{}";
     public int Priority { get; init; } = 5;

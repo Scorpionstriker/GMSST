@@ -16,14 +16,16 @@ namespace Scheduler.IntegrationTests;
 public sealed class DatabaseTests(TestDatabase database) : IClassFixture<TestDatabase>
 {
     [SkippableFact]
-    public async Task Migration_CreatesTheTwelveTablesAndSeedsDefaults()
+    public async Task Migration_CreatesTheThirteenTablesAndSeedsDefaults()
     {
         RequiresDatabase.Check();
         await using var db = database.CreateContext();
         var tables = await db.Database.SqlQueryRaw<string>(
             "SELECT table_name AS \"Value\" FROM information_schema.tables WHERE table_schema = 'scheduler' AND table_name <> '__ef_migrations_history'")
             .ToListAsync();
-        Assert.Equal(12, tables.Count);
+        // The twelve tables of Phase 4, Section 5, and engine_instance (WP-1).
+        Assert.Equal(13, tables.Count);
+        Assert.Contains("engine_instance", tables);
 
         var keys = await db.Configuration.Where(c => c.TaskId == null).Select(c => c.Key).ToListAsync();
         Assert.All(SettingDefinitions.All, d => Assert.Contains(d.Key, keys));

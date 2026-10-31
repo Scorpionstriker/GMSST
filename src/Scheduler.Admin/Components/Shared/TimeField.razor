@@ -1,0 +1,79 @@
+@using System.Globalization
+@* A time-of-day field typed and shown as hh:mm on the 24-hour clock (hh:mm:ss is accepted too). A plain text field is
+   used because the browser's own time field shows a --:-- mask. *@
+
+<div class="date-field time-field">
+    <input id="@Id" type="text" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="@Placeholder"
+           title="Type a time as hh:mm on the 24-hour clock, for example 14:30." value="@_text" @onchange="OnTypedAsync"
+           class="@(_invalid ? "invalid" : "")" aria-invalid="@(_invalid ? "true" : "false")" />
+    @if (_invalid)
+    {
+        <span class="field-error" role="alert">Use hh:mm, for example 14:30.</span>
+    }
+</div>
+
+@code {
+    private static readonly string[] InputFormats = [@"h\:mm", @"h\:mm\:ss", "hhmm"];
+
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public TimeSpan? Value { get; set; }
+    [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "hh:mm";
+
+    private string _text = "";
+    private bool _invalid;
+    private TimeSpan? _shown;
+
+    protected override void OnParametersSet()
+    {
+        if (Value != _shown || (Value is null && !_invalid))
+        {
+            _shown = Value;
+            _text = Show(Value);
+            _invalid = false;
+        }
+    }
+
+    /// <summary>The time as the field shows it: "14:30", or "14:30:15" when it has seconds.</summary>
+    public static string Show(TimeSpan? value) => value switch
+    {
+        null => "",
+        { Seconds: 0 } time => time.ToString(@"hh\:mm", CultureInfo.InvariantCulture),
+        { } time => time.ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture)
+    };
+
+    /// <summary>Reads h:mm, h:mm:ss or hhmm on the 24-hour clock; "." works as a separator too. Empty text is no time.</summary>
+    public static bool TryRead(string? text, out TimeSpan? value)
+    {
+        value = null;
+        var trimmed = (text ?? "").Trim().Replace('.', ':');
+        if (trimmed.Length == 0)
+        {
+            return true;
+        }
+
+        if (TimeSpan.TryParseExact(trimmed, InputFormats, CultureInfo.InvariantCulture, out var time) && time < TimeSpan.FromDays(1))
+        {
+            value = time;
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task OnTypedAsync(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString() ?? "";
+        if (!TryRead(text, out var value))
+        {
+            _text = text;
+            _invalid = true;
+            return;
+        }
+
+        _invalid = false;
+        _shown = value;
+        _text = Show(value);
+        await ValueChanged.InvokeAsync(value);
+    }
+}

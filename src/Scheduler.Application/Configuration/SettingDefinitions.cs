@@ -12,6 +12,7 @@ public static class SettingKeys
     public const string RetryMaxDelaySeconds = nameof(RetryMaxDelaySeconds);
     public const string LeaseGraceSeconds = nameof(LeaseGraceSeconds);
     public const string LogRetentionDays = nameof(LogRetentionDays);
+    public const string AuditRetentionDays = nameof(AuditRetentionDays);
     public const string BackupRetentionCount = nameof(BackupRetentionCount);
     public const string SessionTimeoutMinutes = nameof(SessionTimeoutMinutes);
     public const string MaxFailedLogins = nameof(MaxFailedLogins);
@@ -52,13 +53,14 @@ public static class SettingDefinitions
 {
     public static readonly IReadOnlyList<SettingDefinition> All =
     [
-        new(SettingKeys.MaxConcurrency, "Maximum number of tasks this host runs at the same time.", 4, 1, 16, "tasks", AppliesOnRestart: true),
+        new(SettingKeys.MaxConcurrency, "Maximum number of tasks the scheduler engine runs at the same time (its worker limit).", 4, 1, 16, "tasks", AppliesOnRestart: true),
         new(SettingKeys.MaxPollIntervalSeconds, "Longest time the engine sleeps between checks for due work.", 30, 5, 300, "seconds"),
         new(SettingKeys.MaxRetryLimit, "Retries after a failed or timed-out run, unless the task sets its own.", 3, 0, 10, "retries", AllowTaskOverride: true),
         new(SettingKeys.RetryBaseDelaySeconds, "Delay before the first retry; it doubles for each further retry.", 30, 1, 3600, "seconds", AllowTaskOverride: true),
         new(SettingKeys.RetryMaxDelaySeconds, "Longest delay between retries.", 900, 1, 86400, "seconds", AllowTaskOverride: true),
         new(SettingKeys.LeaseGraceSeconds, "Extra time added to a task's time-out before its claim is treated as abandoned.", 60, 10, 3600, "seconds"),
-        new(SettingKeys.LogRetentionDays, "Executions, errors and log entries older than this are removed by the Log Clean-up task.", 90, 1, 3650, "days"),
+        new(SettingKeys.LogRetentionDays, "Executions, errors, log entries and log files older than this are removed by the Log Clean-up task.", 90, 1, 3650, "days"),
+        new(SettingKeys.AuditRetentionDays, "Sign-in attempts and user management audit records older than this are removed by the Log Clean-up task.", 365, 30, 3650, "days"),
         new(SettingKeys.BackupRetentionCount, "Number of newest backups kept; older backup files are deleted.", 14, 1, 365, "backups"),
         new(SettingKeys.SessionTimeoutMinutes, "Minutes of inactivity before a signed-in user is signed out.", 20, 1, 480, "minutes"),
         new(SettingKeys.MaxFailedLogins, "Failed sign-in attempts in a row before an account is locked.", 5, 1, 20, "attempts"),

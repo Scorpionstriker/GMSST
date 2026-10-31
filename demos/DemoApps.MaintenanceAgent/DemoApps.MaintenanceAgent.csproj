@@ -1,8 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- Demonstration app 2: a headless console application that embeds the scheduler core, runs its own
-       engine against the shared database and handles HealthCheck and TempFileCleanup tasks. Runs on
-       Windows, macOS and Linux (FR-79, NFR-10). References Engine, Infrastructure and Extensibility. -->
+  <!-- Demonstration app 2 (FR-79, WP-1): a separate application with its own database maintenance_demo and no
+       scheduling engine. It offers a small HTTP API on the loopback address only (127.0.0.1 and [::1], port 5087),
+       which the scheduler calls with the built-in Local HTTP Request task type. It references no scheduler
+       project, so it is fully independent. Runs on Windows, macOS and Linux (NFR-10). -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -10,21 +11,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Scheduler.Engine\Scheduler.Engine.csproj" />
-    <ProjectReference Include="..\..\src\Scheduler.Infrastructure\Scheduler.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\src\Scheduler.Extensibility\Scheduler.Extensibility.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Npgsql" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Scheduler.UnitTests" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -25,6 +25,20 @@ public interface ISchedulerModule
     /// to apply the module's own migrations or to create its tasks through <see cref="ISchedulerClient"/>.
     /// </summary>
     Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// Whether an administrator may switch the module off on the Modules page. A switched-off module stays installed
+    /// but is disconnected: its menu entries and pages are hidden and its task types do not run. Return false for a
+    /// module the application cannot work without, such as the one that provides sign-in.
+    /// </summary>
+    bool CanBeDisabled => true;
+
+    /// <summary>
+    /// Runs when an administrator switches the module on or off while the application runs, after
+    /// <see cref="InitializeAsync"/> when it is switched on. Use it to pause or resume work the scheduler cannot tell
+    /// belongs to the module, such as tasks of a built-in task type.
+    /// </summary>
+    Task OnEnabledChangedAsync(IServiceProvider services, bool enabled, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 /// <summary>A menu entry contributed by a module. Pages are discovered from the module's assembly.</summary>

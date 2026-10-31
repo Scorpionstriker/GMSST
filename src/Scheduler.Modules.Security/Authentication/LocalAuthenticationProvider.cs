@@ -3,8 +3,8 @@ using Scheduler.Extensibility.Contracts;
 namespace Scheduler.Modules.Security.Authentication;
 
 /// <summary>
-/// Local username and password sign-in (Algorithm 6.13): one generic failure message, equal timing for unknown
-/// users, lockout after MaxFailedLogins attempts for LockoutMinutes, and an audit record of every attempt
+/// Local username and password sign-in (Algorithm 6.13): one generic failure message, equal timing for unknown,
+/// inactive and locked users, lockout after MaxFailedLogins attempts for LockoutMinutes, and an audit record of every attempt
 /// (FR-45, FR-47, FR-53).
 /// </summary>
 public sealed class LocalAuthenticationProvider(
@@ -32,9 +32,11 @@ public sealed class LocalAuthenticationProvider(
 
         if (user.LockoutEndUtc > now)
         {
+            // WP-4b: the same message and timing as a wrong password, so a locked account cannot be told apart
+            // from an unknown one. The audit record still says LockedOut, and administrators see it on the Users page.
+            hasher.VerifyDummy(password);
             await AuditAsync(user.Id, username, false, "LockedOut", now, cancellationToken);
-            var minutes = (int)Math.Ceiling((user.LockoutEndUtc.Value - now).TotalMinutes);
-            return Fail($"Account locked. Try again after {minutes} minute{(minutes == 1 ? "" : "s")}.");
+            return Fail(GenericFailureMessage);
         }
 
         if (!hasher.Verify(password, user.PasswordHash, user.PasswordSalt))

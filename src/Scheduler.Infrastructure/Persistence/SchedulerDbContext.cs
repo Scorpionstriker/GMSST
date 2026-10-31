@@ -5,7 +5,8 @@ namespace Scheduler.Infrastructure.Persistence;
 
 /// <summary>
 /// EF Core context for the scheduler schema of the local PostgreSQL database: the twelve tables of
-/// Phase 4, Section 5. Demonstration modules keep their own data in a separate schema (FR-78).
+/// Phase 4, Section 5 and the engine_instance table of the single-engine rule (WP-1). Demonstration modules keep
+/// their own data in their own databases (FR-78).
 /// </summary>
 public class SchedulerDbContext(DbContextOptions<SchedulerDbContext> options) : DbContext(options)
 {
@@ -24,6 +25,7 @@ public class SchedulerDbContext(DbContextOptions<SchedulerDbContext> options) : 
     public DbSet<LoggingProviderSetting> LoggingProviders => Set<LoggingProviderSetting>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
     public DbSet<LoginAudit> LoginAudits => Set<LoginAudit>();
+    public DbSet<EngineInstance> EngineInstances => Set<EngineInstance>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

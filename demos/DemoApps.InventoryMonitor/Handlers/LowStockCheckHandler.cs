@@ -21,7 +21,7 @@ public sealed class LowStockCheckHandler(InventoryStore store) : ITaskHandler
     {
         var products = await store.GetProductsAsync(context.CancellationToken);
         var low = products.Where(p => p.IsLow).Select(p => new LowStockLine(p.Sku, p.Name, p.QuantityOnHand, p.ReorderLevel)).ToList();
-        await store.AddReportAsync(InventoryStore.ReportLowStock, products, new { items = low }, context.CancellationToken);
+        await store.AddReportAsync(InventoryStore.ReportLowStock, products, new { items = low }, context.ExecutionId, context.CancellationToken);
 
         foreach (var line in low)
         {

@@ -11,7 +11,8 @@ namespace Scheduler.Infrastructure.Persistence.Repositories;
 internal sealed class QueueRepository(SchedulerDbContext context) : IQueueRepository
 {
     // The claim query of Phase 4, Section 5.5: one short statement that locks the best eligible row,
-    // skipping rows other workers have locked, and records the lease on it (FR-20).
+    // skipping rows other workers have locked, and records the lease on it (FR-20). Order (WP-6): priority 1 (highest)
+    // to 10 (lowest), then the earliest scheduled time, then the entry queued first.
     private const string ClaimSql =
         """
         UPDATE scheduler.task_queue q
@@ -25,7 +26,7 @@ internal sealed class QueueRepository(SchedulerDbContext context) : IQueueReposi
             WHERE q2.queue_status = 'Waiting'
               AND q2.scheduled_time <= @now
               AND t2.task_type = ANY(@registeredTypes)
-            ORDER BY q2.priority, q2.scheduled_time
+            ORDER BY q2.priority, q2.scheduled_time, q2.enqueued_at, q2.queue_id
             LIMIT 1
             FOR UPDATE OF q2 SKIP LOCKED)
           AND t.task_id = q.task_id

@@ -6,6 +6,7 @@
 @inject IFileSaver Files
 @inject ToastService Toasts
 @inject IJSRuntime JS
+@inject PrintService Printer
 
 <div class="page-header">
     <h1>Reports</h1>
@@ -27,11 +28,11 @@
             <option value="@ReportType.FailuresAndErrors">Failures and errors</option>
             <option value="@ReportType.Performance">Performance</option>
             <option value="@ReportType.UpcomingSchedule">Upcoming schedule</option>
-            <option value="@ReportType.SecurityAudit">Security audit (sign-ins)</option>
+            <option value="@ReportType.SecurityAudit">Security and audit</option>
         </select>
     </div>
-    <div class="field"><label for="from">From</label><input id="from" type="date" @bind="_from" /></div>
-    <div class="field"><label for="to">To</label><input id="to" type="date" @bind="_to" /></div>
+    <div class="field"><label for="from">From</label><DateField Id="from" @bind-Value="_from" /></div>
+    <div class="field"><label for="to">To</label><DateField Id="to" @bind-Value="_to" /></div>
     @if (_type != ReportType.SecurityAudit)
     {
         <div class="field">
@@ -45,7 +46,9 @@
             </select>
         </div>
     }
-    @if (_type is ReportType.ExecutionSummary or ReportType.Performance)
+    @* WP-8c (F-19): the status filter applies to the three execution reports, the outcome filter to the Security and
+       audit report; the Upcoming schedule report lists future runs, so it has neither. *@
+    @if (_type is ReportType.ExecutionSummary or ReportType.FailuresAndErrors or ReportType.Performance)
     {
         <div class="field">
             <label for="status">Status</label>
@@ -57,6 +60,21 @@
                 }
             </select>
         </div>
+    }
+    @if (_type == ReportType.SecurityAudit)
+    {
+        <div class="field">
+            <label for="outcome">Outcome</label>
+            <select id="outcome" @bind="Outcome">
+                <option value="">Any</option>
+                <option value="succeeded">Succeeded</option>
+                <option value="failed">Failed</option>
+            </select>
+        </div>
+    }
+    @if (_type == ReportType.UpcomingSchedule)
+    {
+        <p class="hint" style="align-self:center">This report lists future runs, so it has no status filter.</p>
     }
     <button class="btn btn-primary" type="submit" disabled="@_busy">@(_busy ? "Generating…" : "Generate")</button>
 </form>
@@ -107,10 +125,18 @@
 
 @code {
     private ReportType _type = ReportType.ExecutionSummary;
-    private DateTime _from = DateTime.Today.AddDays(-7);
-    private DateTime _to = DateTime.Today;
+    private DateTime? _from = DateTime.Today.AddDays(-7);
+    private DateTime? _to = DateTime.Today;
     private Guid? _task;
     private ExecutionStatus? _status;
+    private bool? _succeeded;
+    private (DateOnly From, DateOnly To) _dates;
+
+    private string Outcome
+    {
+        get => _succeeded switch { true => "succeeded", false => "failed", _ => "" };
+        set => _succeeded = value switch { "succeeded" => true, "failed" => false, _ => null };
+    }
     private IReadOnlyList<TaskLookup> _lookups = [];
     private ReportResult? _report;
     private Result? _result;
@@ -133,11 +159,18 @@
         _busy = true;
         try
         {
-            // The whole of the "To" day is included.
-            _range = (Display.ToUtc(_from.Date)!.Value, Display.ToUtc(_to.Date.AddDays(1))!.Value);
+            // An empty date falls back to the default range; the whole of the "To" day is included.
+            _from ??= DateTime.Today.AddDays(-7);
+            _to ??= DateTime.Today;
+            var from = _from.Value.Date;
+            var to = _to.Value.Date;
+            _range = (Display.ToUtc(from)!.Value, Display.ToUtc(to.AddDays(1))!.Value);
+            _dates = (DateOnly.FromDateTime(from), DateOnly.FromDateTime(to));
             var query = new GenerateReportQuery(_type, _range.From, _range.To,
                 _type == ReportType.SecurityAudit ? null : _task,
-                _type is ReportType.ExecutionSummary or ReportType.Performance ? _status : null);
+                _type is ReportType.ExecutionSummary or ReportType.FailuresAndErrors or ReportType.Performance ? _status : null,
+                _type == ReportType.SecurityAudit ? _succeeded : null,
+                _dates.From, _dates.To);
             var result = await Generate.HandleAsync(query);
             _result = result;
             _report = result.Value;
@@ -150,7 +183,7 @@
 
     private async Task ExportAsync()
     {
-        var csv = _report!.ToCsv(_range.From, _range.To);
+        var csv = _report!.ToCsv(_dates.From, _dates.To);
         try
         {
             Toasts.Success("Saved to " + await Files.SaveAsync(csv.FileName, csv.Content));
@@ -161,5 +194,5 @@
         }
     }
 
-    private Task PrintAsync() => JS.InvokeVoidAsync("gmssPrint").AsTask();
+    private Task PrintAsync() => Printer.PrintAsync(JS);
 }

@@ -17,7 +17,7 @@ internal sealed class FailureRecorder(ISettingsProvider settings)
         bool timedOut, string errorType, string message, string? stackTraceJson, DateTime nowUtc, CancellationToken cancellationToken)
     {
         var maxRetries = task.MaxRetries ?? await settings.GetForTaskAsync(SettingKeys.MaxRetryLimit, task.Id, cancellationToken);
-        var willRetry = RetryPolicy.ShouldRetry(entry.Attempt, maxRetries, task is { Status: ScheduledTaskStatus.Active, IsDeleted: false });
+        var willRetry = RetryPolicy.ShouldRetry(entry.Attempt, maxRetries, entry.MayRun(task));
 
         var status = willRetry ? ExecutionStatus.Retrying : timedOut ? ExecutionStatus.TimedOut : ExecutionStatus.Failed;
         execution.Complete(status, nowUtc, null);
@@ -33,7 +33,7 @@ internal sealed class FailureRecorder(ISettingsProvider settings)
                 entry.Attempt,
                 await settings.GetForTaskAsync(SettingKeys.RetryBaseDelaySeconds, task.Id, cancellationToken),
                 await settings.GetForTaskAsync(SettingKeys.RetryMaxDelaySeconds, task.Id, cancellationToken));
-            unitOfWork.Queue.Add(QueueEntry.Create(task, entry.ScheduleId, TriggerType.Retry, nowUtc + delay, entry.Attempt + 1, nowUtc));
+            unitOfWork.Queue.Add(entry.FollowUp(task, TriggerType.Retry, nowUtc + delay, entry.Attempt + 1, nowUtc));
         }
 
         return willRetry;

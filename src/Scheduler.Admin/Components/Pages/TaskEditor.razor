@@ -15,6 +15,7 @@
 @inject ICurrentUser CurrentUser
 @inject ToastService Toasts
 @inject NavigationManager Navigation
+@inject ITaskTypeRegistry Registry
 
 <div class="page-header">
     <h1>@(IsNew ? "New task" : _form.Name)</h1>
@@ -38,16 +39,23 @@
                 else
                 {
                     <button class="btn" disabled="@(d.Status == ScheduledTaskStatus.Disabled)" @onclick="RunNowAsync">Run now</button>
+                    @* WP-6 state table: Active -> Pause or Disable, Paused -> Resume or Disable, Disabled -> Enable. *@
                     @if (d.Status == ScheduledTaskStatus.Active)
                     {
                         <button class="btn" @onclick="() => SetStatusAsync(ScheduledTaskStatus.Paused)">Pause</button>
-                        <button class="btn" @onclick="() => SetStatusAsync(ScheduledTaskStatus.Disabled)">Disable</button>
                     }
                     else
                     {
-                        <button class="btn" @onclick="() => SetStatusAsync(ScheduledTaskStatus.Active)">Resume</button>
+                        <button class="btn" @onclick="() => SetStatusAsync(ScheduledTaskStatus.Active)">@(d.Status == ScheduledTaskStatus.Disabled ? "Enable" : "Resume")</button>
                     }
-                    <button class="btn btn-danger" @onclick="() => _confirmDelete = true">Delete</button>
+                    @if (d.Status != ScheduledTaskStatus.Disabled)
+                    {
+                        <button class="btn" @onclick="() => SetStatusAsync(ScheduledTaskStatus.Disabled)">Disable</button>
+                    }
+                    @if (!d.IsBuiltIn)
+                    {
+                        <button class="btn btn-danger" @onclick="() => _confirmDelete = true">Delete</button>
+                    }
                 }
             }
             <a class="btn" href="executions?taskId=@d.Id">History</a>
@@ -88,12 +96,12 @@ else
             <div class="form-grid">
                 <div class="field">
                     <label for="name" class="required">Name</label>
-                    <input id="name" @bind="_form.Name" maxlength="100" class="@Invalid(TaskFields.Name)" />
-                    <FieldError Result="_result" Field="@TaskFields.Name" />
+                    <input id="name" @bind="_form.Name" @bind:after="() => Touch(TaskFields.Name)" maxlength="100" class="@Invalid(TaskFields.Name)" />
+                    <FieldError Result="Shown" Field="@TaskFields.Name" />
                 </div>
                 <div class="field">
                     <label for="type" class="required">Task type</label>
-                    <select id="type" @bind="_form.TaskType" class="@Invalid(TaskFields.TaskType)">
+                    <select id="type" @bind="_form.TaskType" @bind:after="() => Touch(TaskFields.TaskType)" class="@Invalid(TaskFields.TaskType)">
                         <option value="">Select a task type…</option>
                         @foreach (var type in _types)
                         {
@@ -108,17 +116,21 @@ else
                     {
                         <span class="hint">@description</span>
                     }
-                    <FieldError Result="_result" Field="@TaskFields.TaskType" />
+                    @if (!string.IsNullOrEmpty(_form.TaskType) && SelectedType is null)
+                    {
+                        <span><StatusBadge Text="No handler" Tone="danger" Title="@Tasks.NoHandlerHint" /> <span class="hint">@Tasks.NoHandlerHint</span></span>
+                    }
+                    <FieldError Result="Shown" Field="@TaskFields.TaskType" />
                 </div>
             </div>
             <div class="field">
                 <label for="description">Description</label>
-                <textarea id="description" rows="2" @bind="_form.Description" maxlength="1000"></textarea>
-                <FieldError Result="_result" Field="@TaskFields.Description" />
+                <textarea id="description" rows="2" @bind="_form.Description" @bind:after="() => Touch(TaskFields.Description)" maxlength="1000"></textarea>
+                <FieldError Result="Shown" Field="@TaskFields.Description" />
             </div>
             <div class="field">
                 <label for="payload">Payload (JSON)</label>
-                <textarea id="payload" class="code @Invalid(TaskFields.Payload)" @bind="_form.Payload" spellcheck="false"></textarea>
+                <textarea id="payload" class="code @Invalid(TaskFields.Payload)" @bind="_form.Payload" @bind:after="() => Touch(TaskFields.Payload)" spellcheck="false"></textarea>
                 <span class="hint">
                     Settings passed to the task when it runs.
                     @if (SelectedType?.PayloadExample is { } example)
@@ -126,24 +138,24 @@ else
                         <button type="button" class="btn-link" @onclick="() => _form.Payload = example">Use the example for this task type</button>
                     }
                 </span>
-                <FieldError Result="_result" Field="@TaskFields.Payload" />
+                <FieldError Result="Shown" Field="@TaskFields.Payload" />
             </div>
             <div class="form-grid">
                 <div class="field">
-                    <label for="priority">Priority (1 = lowest, 10 = highest)</label>
-                    <input id="priority" type="number" min="1" max="10" @bind="_form.Priority" class="@Invalid(TaskFields.Priority)" />
-                    <FieldError Result="_result" Field="@TaskFields.Priority" />
+                    <label for="priority">Priority (1 = highest, 10 = lowest)</label>
+                    <input id="priority" type="number" min="1" max="10" @bind="_form.Priority" @bind:after="() => Touch(TaskFields.Priority)" class="@Invalid(TaskFields.Priority)" />
+                    <FieldError Result="Shown" Field="@TaskFields.Priority" />
                 </div>
                 <div class="field">
                     <label for="retries">Retries after a failure</label>
-                    <input id="retries" type="number" min="0" max="10" @bind="_form.MaxRetries" placeholder="Global setting" class="@Invalid(TaskFields.MaxRetries)" />
+                    <input id="retries" type="number" min="0" max="10" @bind="_form.MaxRetries" @bind:after="() => Touch(TaskFields.MaxRetries)" placeholder="Global setting" class="@Invalid(TaskFields.MaxRetries)" />
                     <span class="hint">Leave empty to use the global MaxRetryLimit.</span>
-                    <FieldError Result="_result" Field="@TaskFields.MaxRetries" />
+                    <FieldError Result="Shown" Field="@TaskFields.MaxRetries" />
                 </div>
                 <div class="field">
                     <label for="timeout">Time-out (seconds)</label>
-                    <input id="timeout" type="number" min="1" max="86400" @bind="_form.TimeoutSeconds" class="@Invalid(TaskFields.TimeoutSeconds)" />
-                    <FieldError Result="_result" Field="@TaskFields.TimeoutSeconds" />
+                    <input id="timeout" type="number" min="1" max="86400" @bind="_form.TimeoutSeconds" @bind:after="() => Touch(TaskFields.TimeoutSeconds)" class="@Invalid(TaskFields.TimeoutSeconds)" />
+                    <FieldError Result="Shown" Field="@TaskFields.TimeoutSeconds" />
                 </div>
             </div>
         </fieldset>
@@ -157,7 +169,7 @@ else
                     <button type="button" class="btn @(_form.Type == ScheduleType.Interval ? "selected" : "")" @onclick="() => SetType(ScheduleType.Interval)">Every interval</button>
                     <button type="button" class="btn @(_form.Type == ScheduleType.Once ? "selected" : "")" @onclick="() => SetType(ScheduleType.Once)">Once</button>
                 </div>
-                <FieldError Result="_result" Field="@TaskFields.ScheduleType" />
+                <FieldError Result="Shown" Field="@TaskFields.ScheduleType" />
             </div>
 
             <div class="form-grid">
@@ -165,10 +177,10 @@ else
                 {
                     <div class="field">
                         <label for="cron" class="required">Cron expression</label>
-                        <input id="cron" class="mono @Invalid(TaskFields.CronExpression)" @bind="_form.CronExpression" @bind:after="ScheduleChanged"
+                        <input id="cron" class="mono @Invalid(TaskFields.CronExpression)" @bind="_form.CronExpression" @bind:event="oninput" @bind:after="() => ScheduleChanged(TaskFields.CronExpression)"
                                placeholder="0 2 * * *" spellcheck="false" />
                         <span class="hint">minute hour day-of-month month day-of-week, for example <code>0 2 * * *</code> is every day at 02:00. See Help.</span>
-                        <FieldError Result="_result" Field="@TaskFields.CronExpression" />
+                        <FieldError Result="Shown" Field="@TaskFields.CronExpression" />
                     </div>
                 }
                 else if (_form.Type == ScheduleType.Interval)
@@ -176,48 +188,53 @@ else
                     <div class="field">
                         <label for="interval" class="required">Every</label>
                         <div class="actions" style="margin-top:0">
-                            <input id="interval" type="number" min="1" style="width:7rem" @bind="_form.IntervalValue" @bind:after="ScheduleChanged"
+                            <input id="interval" type="number" min="1" style="width:7rem" @bind="_form.IntervalValue" @bind:after="() => ScheduleChanged(TaskFields.IntervalSeconds)"
                                    class="@Invalid(TaskFields.IntervalSeconds)" />
-                            <select @bind="_form.IntervalUnit" @bind:after="ScheduleChanged" aria-label="Interval unit">
+                            <select @bind="_form.IntervalUnit" @bind:after="() => ScheduleChanged(TaskFields.IntervalSeconds)" aria-label="Interval unit">
                                 <option value="1">seconds</option>
                                 <option value="60">minutes</option>
                                 <option value="3600">hours</option>
                                 <option value="86400">days</option>
                             </select>
                         </div>
-                        <FieldError Result="_result" Field="@TaskFields.IntervalSeconds" />
+                        <FieldError Result="Shown" Field="@TaskFields.IntervalSeconds" />
                     </div>
                 }
                 <div class="field">
                     <label for="zone">Time zone</label>
-                    <select id="zone" @bind="_form.TimeZoneId" @bind:after="ScheduleChanged" class="@Invalid(TaskFields.TimeZoneId)">
+                    <select id="zone" @bind="_form.TimeZoneId" @bind:after="() => ScheduleChanged(TaskFields.TimeZoneId)" class="@Invalid(TaskFields.TimeZoneId)">
                         @foreach (var zone in _zones)
                         {
                             <option value="@zone.Id">@zone.Label</option>
                         }
                     </select>
-                    <FieldError Result="_result" Field="@TaskFields.TimeZoneId" />
+                    <FieldError Result="Shown" Field="@TaskFields.TimeZoneId" />
                 </div>
                 <div class="field">
                     <label for="start" class="@(_form.Type == ScheduleType.Once ? "required" : "")">@(_form.Type == ScheduleType.Once ? "Run at" : "Start")</label>
-                    <input id="start" type="datetime-local" step="1" @bind="_form.StartTime" @bind:after="ScheduleChanged" class="@Invalid(TaskFields.StartTime)" />
+                    <DateTimeFields Id="start" @bind-Value="_form.StartTime" @bind-Value:after="() => ScheduleChanged(TaskFields.StartTime)" CssClass="@Invalid(TaskFields.StartTime)" />
+                    @* WP-8f: optional for cron and interval (empty means from now); a single run needs a future time. *@
                     @if (_form.Type != ScheduleType.Once)
                     {
-                        <span class="hint">Optional. Empty means from now.</span>
+                        <span class="hint">Optional. Empty means from now. A date without a time means 00:00.</span>
                     }
-                    <FieldError Result="_result" Field="@TaskFields.StartTime" />
+                    else
+                    {
+                        <span class="hint">Required: a date (dd/mm/yy) and a time (hh:mm, 24-hour). Must be in the future.</span>
+                    }
+                    <FieldError Result="Shown" Field="@TaskFields.StartTime" />
                 </div>
                 @if (_form.Type != ScheduleType.Once)
                 {
                     <div class="field">
                         <label for="end">End</label>
-                        <input id="end" type="datetime-local" step="1" @bind="_form.EndTime" @bind:after="ScheduleChanged" class="@Invalid(TaskFields.EndTime)" />
-                        <span class="hint">Optional. No runs after this time.</span>
-                        <FieldError Result="_result" Field="@TaskFields.EndTime" />
+                        <DateTimeFields Id="end" @bind-Value="_form.EndTime" @bind-Value:after="() => ScheduleChanged(TaskFields.EndTime)" CssClass="@Invalid(TaskFields.EndTime)" />
+                        <span class="hint">Optional. No runs after this date and time; a date without a time means 00:00.</span>
+                        <FieldError Result="Shown" Field="@TaskFields.EndTime" />
                     </div>
                     <div class="field">
                         <label for="misfire">If runs were missed</label>
-                        <select id="misfire" @bind="_form.MisfirePolicy" @bind:after="ScheduleChanged">
+                        <select id="misfire" @bind="_form.MisfirePolicy" @bind:after="() => ScheduleChanged(TaskFields.MisfirePolicy)">
                             <option value="@MisfirePolicy.RunOnce">Run once to catch up</option>
                             <option value="@MisfirePolicy.Skip">Skip them</option>
                             <option value="@MisfirePolicy.RunAll">Run every missed run</option>
@@ -272,7 +289,7 @@ else
                     }
                 </div>
             }
-            <FieldError Result="_result" Field="@TaskFields.DependsOn" />
+            <FieldError Result="Shown" Field="@TaskFields.DependsOn" />
         </fieldset>
 
         @if (!ReadOnly)
@@ -317,6 +334,8 @@ else
     {
         _loaded = false;
         _result = null;
+        _touched.Clear();
+        _live = [];
         _types = (await GetTaskTypes.HandleAsync(new GetTaskTypesQuery())).Value ?? [];
         _lookups = (await GetLookups.HandleAsync(new GetTaskLookupsQuery())).Value ?? [];
         _zones = TimeZones.All(DateTime.UtcNow);
@@ -349,13 +368,38 @@ else
     private void SetType(ScheduleType type)
     {
         _form.Type = type;
-        _ = ScheduleChanged();
+        _ = ScheduleChanged(TaskFields.ScheduleType);
     }
 
-    private async Task ScheduleChanged()
+    private async Task ScheduleChanged(string field)
     {
         _scheduleTouched = true;
+        Touch(field);
         await RefreshPreviewAsync();
+    }
+
+    // WP-8a (F-11): each field is checked with the rules of TaskInputRules as soon as it changes or loses focus, and the
+    // cron expression while it is typed. Fields not touched since the last save keep the message the save returned;
+    // Save still runs the full check, including the rules that need the database (unique name, dependency cycles).
+    private readonly HashSet<string> _touched = [];
+    private IReadOnlyList<Error> _live = [];
+
+    private void Touch(string field)
+    {
+        _touched.Add(field);
+        var input = _form.ToInput(CurrentSchedule());
+        _live = TaskInputRules.ValidateFields(input, Registry, DateTime.UtcNow, _details?.Input.TaskType).Errors;
+    }
+
+    private Result? Shown
+    {
+        get
+        {
+            var errors = (_result?.Errors ?? []).Where(e => e.Field is null || !_touched.Contains(e.Field))
+                .Concat(_live.Where(e => e.Field is not null && _touched.Contains(e.Field)))
+                .ToList();
+            return errors.Count == 0 ? null : Result.Failure<Unit>(errors);
+        }
     }
 
     private async Task RefreshPreviewAsync()
@@ -384,6 +428,8 @@ else
     private async Task SaveAsync()
     {
         _saving = true;
+        _touched.Clear();
+        _live = [];
         try
         {
             var input = _form.ToInput(CurrentSchedule());
@@ -449,7 +495,7 @@ else
         }
     }
 
-    private string Invalid(string field) => _result?.MessageFor(field) is null ? "" : "invalid";
+    private string Invalid(string field) => Shown?.MessageFor(field) is null ? "" : "invalid";
 
     /// <summary>The editable copy of <see cref="TaskInput"/>; the record itself is immutable.</summary>
     private sealed class TaskForm

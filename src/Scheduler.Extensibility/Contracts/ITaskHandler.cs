@@ -9,6 +9,14 @@ namespace Scheduler.Extensibility.Contracts;
 /// run is recorded as failed rather than silently succeeding. Unexpected exceptions are caught by the
 /// engine and recorded with their stack trace (FR-30, FR-32). Honour <see cref="ITaskContext.CancellationToken"/>:
 /// it is cancelled when the task's time-out expires or the host shuts down.
+/// <para>
+/// Delivery is at-least-once (NFR-01): work is never lost, but after a crash, or when the result of a finished run
+/// could not be saved, the same work may run again. Write handlers so that running them twice does no harm.
+/// <see cref="ITaskContext.ExecutionId"/> identifies one attempt and can be stored with the handler's own data as an
+/// idempotency key, as the Inventory Monitor's stock report does; together with <see cref="ITaskContext.RetryNumber"/>
+/// it tells a handler which attempt it is. A run queued again by recovery gets a new execution id, so work that must
+/// never repeat should also check its own data, for example "has today's report already been written?".
+/// </para>
 /// </remarks>
 public interface ITaskHandler
 {

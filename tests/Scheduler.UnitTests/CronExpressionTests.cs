@@ -37,15 +37,6 @@ public class CronExpressionTests
     }
 
     [Fact]
-    public void NextOccurrence_SkipsATimeThatDoesNotExist()
-    {
-        // On 29 March 2026 London clocks jump from 01:00 to 02:00, so 01:30 does not exist that day.
-        var cron = CronExpression.Parse("30 1 * * *");
-
-        Assert.Equal(Utc(2026, 3, 30, 0, 30), cron.GetNextOccurrence(Utc(2026, 3, 28, 12, 0), London));
-    }
-
-    [Fact]
     public void NextOccurrence_RunsARepeatedTimeOnlyOnce()
     {
         // On 25 October 2026 London clocks go back from 02:00 to 01:00, so 01:30 happens twice.
@@ -82,6 +73,36 @@ public class CronExpressionTests
 
         // 5 January 2026 is a Monday, before the 15th.
         Assert.Equal(Utc(2026, 1, 5, 0, 0), cron.GetNextOccurrence(Utc(2026, 1, 1, 0, 0), TimeZoneInfo.Utc));
+    }
+
+    [Fact]
+    public void DayFieldStartingWithStar_DoesNotTurnOnTheEitherDayRule()
+    {
+        // WP-8g: "*/2" in day-of-month counts as unrestricted for the either-day rule, so both fields must match:
+        // odd days of the month that are also Mondays. 5 January 2026 is a Monday on an odd day.
+        var cron = CronExpression.Parse("0 0 */2 * MON");
+        Assert.Equal(Utc(2026, 1, 5, 0, 0), cron.GetNextOccurrence(Utc(2026, 1, 1, 0, 0), TimeZoneInfo.Utc));
+
+        // The next odd-day Monday is 19 January (12 January is even).
+        Assert.Equal(Utc(2026, 1, 19, 0, 0), cron.GetNextOccurrence(Utc(2026, 1, 5, 0, 0), TimeZoneInfo.Utc));
+
+        // And a step in day-of-week alone still restricts the days: Sunday, Tuesday, Thursday, Saturday.
+        var everyOtherDay = CronExpression.Parse("0 0 * * */2");
+        Assert.Equal(Utc(2026, 1, 3, 0, 0), everyOtherDay.GetNextOccurrence(Utc(2026, 1, 1, 0, 0), TimeZoneInfo.Utc)); // Saturday
+    }
+
+    [Fact]
+    public void LocalTimeSkippedByDaylightSaving_RunsAtTheFirstValidMinuteAfterTheGap()
+    {
+        // On 29 March 2026 London's clocks go from 01:00 to 02:00, so 01:30 does not exist.
+        var cron = CronExpression.Parse("30 1 * * *");
+        var next = cron.GetNextOccurrence(Utc(2026, 3, 28, 12, 0), London);
+
+        // 02:00 BST is 01:00 UTC on that day.
+        Assert.Equal(Utc(2026, 3, 29, 1, 0), next);
+
+        // The following run is 01:30 GMT+1 the next day, with no extra run in between.
+        Assert.Equal(Utc(2026, 3, 30, 0, 30), cron.GetNextOccurrence(next!.Value, London));
     }
 
     [Theory]

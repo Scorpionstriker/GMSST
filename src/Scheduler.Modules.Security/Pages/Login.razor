@@ -17,6 +17,12 @@
         {
             <p class="muted">Loading…</p>
         }
+        else if (_firstCode is not null)
+        {
+            <div class="banner banner-success" role="status">The administrator account was created and you are signed in.</div>
+            <RecoveryCodeNotice Code="@_firstCode" />
+            <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/"))">Continue</button>
+        }
         else if (_firstRun == true)
         {
             <p>Create the first Developer account. This is the super-admin account. There is no default password, so this account is the only way in.</p>
@@ -65,6 +71,10 @@
                 }
                 <button class="btn btn-primary" type="submit" disabled="@_busy">@(_busy ? "Signing in…" : "Sign in")</button>
             </form>
+            <div class="login-links">
+                <a href="login/forgot-password">Forgot password?</a>
+                <a href="login/register">Register</a>
+            </div>
         }
     </div>
 </div>
@@ -73,6 +83,7 @@
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
 
     private bool? _firstRun;
+    private string? _firstCode;
     private string? _loadError;
     private string _username = "";
     private string _password = "";
@@ -133,7 +144,7 @@
             {
                 await Authentication.SignInAsync(_username, _password);
                 _password = _confirmation = "";
-                Navigation.NavigateTo("/");
+                _firstCode = _result.RecoveryCode;
             }
         }
         finally

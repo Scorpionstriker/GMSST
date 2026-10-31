@@ -14,6 +14,7 @@ using Scheduler.Extensibility.Contracts;
 using Scheduler.Infrastructure.Backup;
 using Scheduler.Infrastructure.Caching;
 using Scheduler.Infrastructure.Configuration;
+using Scheduler.Infrastructure.Engine;
 using Scheduler.Infrastructure.Logging;
 using Scheduler.Infrastructure.Persistence;
 using Scheduler.Infrastructure.Persistence.Queries;
@@ -25,23 +26,33 @@ public static class DependencyInjection
 {
     /// <summary>
     /// Registers persistence (EF Core on PostgreSQL), the repositories and queries, the settings cache, the
-    /// Console, File and Database logging providers and the backup service. Reads the "Database" and "Paths"
+    /// Console, File and Database logging providers and the backup service. Reads the "Database", "Paths", "Backup" and "Security"
     /// sections of <paramref name="configuration"/>; the password comes from GMSS_DB_PASSWORD (NFR-15).
     /// </summary>
     public static IServiceCollection AddSchedulerInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         var databaseOptions = configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>() ?? new DatabaseOptions();
         services.Configure<PathsOptions>(configuration.GetSection(PathsOptions.SectionName));
-        return services.AddSchedulerInfrastructure(DatabaseConnection.FromEnvironment(databaseOptions));
+        services.Configure<BackupOptions>(configuration.GetSection(BackupOptions.SectionName));
+        services.Configure<SecurityOptions>(configuration.GetSection(SecurityOptions.SectionName));
+        services.AddSingleton<ILoginBypass, ConfigurationLoginBypass>();
+        return services.AddSchedulerInfrastructure(DatabaseConnection.FromEnvironment(databaseOptions), configuration);
     }
 
-    public static IServiceCollection AddSchedulerInfrastructure(this IServiceCollection services, DatabaseConnection connection)
+    /// <param name="services">The service collection.</param>
+    /// <param name="connection">The scheduler's own database connection.</param>
+    /// <param name="configuration">Optional configuration with the modules' database sections, for example "Inventory" (WP-1).</param>
+    public static IServiceCollection AddSchedulerInfrastructure(this IServiceCollection services, DatabaseConnection connection,
+        IConfiguration? configuration = null)
     {
         services.TryAddSingleton(TimeProvider.System);
         services.AddOptions<PathsOptions>();
+        services.AddOptions<BackupOptions>();
         services.AddSingleton(connection);
 
-        // One data source per process; modules (for example the Inventory Monitor) can use it for their own schema.
+        // One data source per process for the scheduler's database. Modules use their own databases through
+        // IModuleDatabases (WP-1), so they never write into the scheduler's tables.
+        services.AddSingleton<IModuleDatabases>(_ => new ModuleDatabases(connection, configuration));
         var dataSource = new Npgsql.NpgsqlDataSourceBuilder(connection.ConnectionString).Build();
         services.AddSingleton(dataSource);
         services.AddSingleton<System.Data.Common.DbDataSource>(dataSource);
@@ -64,7 +75,9 @@ public static class DependencyInjection
         services.AddSingleton<ILoggingProvider, FileLoggingProvider>();
         services.AddSingleton<ILoggingProvider, ConsoleLoggingProvider>();
         services.AddSingleton<ISchedulerLogger, SchedulerLogWriter>();
+        services.AddSingleton<ILogFileCleaner, LogFileCleaner>();
 
+        services.AddSingleton<IEngineInstanceLock, PostgresEngineInstanceLock>();
         services.AddSingleton<IBackupService, PgBackupService>();
         services.AddSingleton<IDatabaseInitializer, DatabaseInitializer>();
         return services;

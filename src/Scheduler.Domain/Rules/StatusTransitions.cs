@@ -13,6 +13,7 @@ public static class StatusTransitions
         (ScheduledTaskStatus.Active, ScheduledTaskStatus.Paused) => true,
         (ScheduledTaskStatus.Active, ScheduledTaskStatus.Disabled) => true,
         (ScheduledTaskStatus.Paused, ScheduledTaskStatus.Active) => true,
+        (ScheduledTaskStatus.Paused, ScheduledTaskStatus.Disabled) => true,
         (ScheduledTaskStatus.Disabled, ScheduledTaskStatus.Active) => true,
         _ => false
     };

@@ -1,6 +1,25 @@
+@implements IDisposable
+@inject Scheduler.Application.Modules.IModuleSwitches Switches
+
 <Router AppAssembly="typeof(Routes).Assembly" AdditionalAssemblies="ModuleCatalog.PageAssemblies" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
-        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        @if (Switches.IsEnabled(routeData.PageType.Assembly))
+        {
+            <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+            <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        }
+        else
+        {
+            @* A page of a module that is switched off on the Modules page, reached by an old link or bookmark. *@
+            <LayoutView Layout="typeof(Layout.MainLayout)"><Scheduler.Admin.Components.Pages.ModuleSwitchedOff /></LayoutView>
+        }
     </Found>
 </Router>
+
+@code {
+    protected override void OnInitialized() => Switches.Changed += OnSwitched;
+
+    private void OnSwitched(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Switches.Changed -= OnSwitched;
+}

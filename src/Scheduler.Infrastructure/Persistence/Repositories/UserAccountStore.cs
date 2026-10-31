@@ -46,7 +46,11 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
         var entity = new AppUser(user.Id, user.Username.Trim(), user.PasswordHash, user.PasswordSalt, user.Role, user.IsActive,
-            user.CreatedAtUtc == default ? DateTime.UtcNow : user.CreatedAtUtc);
+            user.CreatedAtUtc == default ? DateTime.UtcNow : user.CreatedAtUtc)
+        {
+            RecoveryCodeHash = user.RecoveryCodeHash,
+            RecoveryCodeSalt = user.RecoveryCodeSalt
+        };
         db.AppUsers.Add(entity);
         await Save(db, cancellationToken);
     }
@@ -56,6 +60,11 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
         var entity = await db.AppUsers.FirstOrDefaultAsync(u => u.Id == user.Id, cancellationToken)
                      ?? throw new InvalidOperationException("The user no longer exists.");
+        if (user.Version != 0)
+        {
+            db.Entry(entity).Property(e => e.Version).OriginalValue = user.Version;
+        }
+
         entity.Username = user.Username.Trim();
         entity.PasswordHash = user.PasswordHash;
         entity.PasswordSalt = user.PasswordSalt;
@@ -64,6 +73,8 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
         entity.LockoutEndUtc = user.LockoutEndUtc;
         entity.LastLoginAtUtc = user.LastLoginAtUtc;
         entity.IsActive = user.IsActive;
+        entity.RecoveryCodeHash = user.RecoveryCodeHash;
+        entity.RecoveryCodeSalt = user.RecoveryCodeSalt;
         entity.UpdatedAtUtc = DateTime.UtcNow;
         await Save(db, cancellationToken);
     }
@@ -80,6 +91,10 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new UserAccountConflictException("The account was changed by someone else after it was opened.", ex);
         }
         catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
         {
@@ -98,6 +113,9 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
         LockoutEndUtc = user.LockoutEndUtc,
         LastLoginAtUtc = user.LastLoginAtUtc,
         IsActive = user.IsActive,
-        CreatedAtUtc = user.CreatedAtUtc
+        CreatedAtUtc = user.CreatedAtUtc,
+        RecoveryCodeHash = user.RecoveryCodeHash,
+        RecoveryCodeSalt = user.RecoveryCodeSalt,
+        Version = user.Version
     };
 }

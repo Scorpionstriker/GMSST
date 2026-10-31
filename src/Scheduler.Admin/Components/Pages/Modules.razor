@@ -1,11 +1,25 @@
 @page "/modules"
 @using Scheduler.Application.Tasks
+@implements IDisposable
 @inject SchedulerHost Host
 @inject IQueryHandler<GetTaskTypesQuery, IReadOnlyList<TaskTypeInfo>> GetTaskTypes
+@inject ITaskTypeRegistry Registry
+@inject IEnumerable<ISchedulerModule> ModuleList
+@inject IEnumerable<IManagedApplication> Applications
+@inject Scheduler.Application.Modules.IModuleSwitches Switches
+@inject ICurrentUser CurrentUser
+@inject ToastService Toasts
 
-<div class="page-header"><h1>Modules</h1></div>
-<p class="muted">The modules loaded into this application and the task types each one provides. To remove a module, take it out of
-    ModuleCatalog.cs and remove its project reference; see Help.</p>
+<div class="page-header">
+    <h1>Modules</h1>
+    <div class="actions"><button class="btn" @onclick="RefreshAsync" disabled="@_refreshing">Refresh</button></div>
+</div>
+<p class="muted">The modules loaded into this application, the pages they add and the task types each one provides. The first one is
+    this administration GUI itself, which provides the core pages. Switch a module off to
+    disconnect it without removing it: its menu entries and pages are hidden, its tasks wait and its application is stopped until it is switched on
+    again, when the application is launched again if it was running. Every module is on by default. Launch and Stop start and stop a module's
+    application. To remove a module for good, take it out of ModuleCatalog.cs and remove its
+    project reference; see Help.</p>
 
 <div class="card">
     <h2>Loaded modules</h2>
@@ -16,22 +30,107 @@
     else
     {
         <table class="table">
-            <thead><tr><th>Module</th><th>Assembly</th><th>Status</th></tr></thead>
+            <thead><tr><th>Module</th><th>Pages</th><th>Status</th><th>On</th><th>Application</th></tr></thead>
             <tbody>
                 @foreach (var module in Host.Modules)
                 {
-                    <tr>
-                        <td><strong>@module.Name</strong><div class="hint">@module.Description</div></td>
-                        <td class="mono">@module.Assembly</td>
+                    var app = ApplicationOf(module.Name);
+                    <tr class="@(module.Enabled ? "" : "row-muted")">
                         <td>
-                            @if (module.Initialized)
+                            <strong>@module.Name</strong>
+                            <div class="hint">@module.Description</div>
+                            <div class="hint mono">@module.Assembly</div>
+                        </td>
+                        <td>
+                            @* WP-8b (F-18): the menu entries the module adds, with links. *@
+                            @{ var items = MenuItemsOf(module.Name); }
+                            @if (items.Count == 0)
+                            {
+                                <span class="muted">None</span>
+                            }
+                            @foreach (var item in items)
+                            {
+                                <div>
+                                    @if (module.Enabled)
+                                    {
+                                        <a href="@item.Route.TrimStart('/')">@item.Title</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">@item.Title</span>
+                                    }
+                                    <span class="hint hint-inline">@(item.Group ?? "Modules")@(item.AdministratorOnly ? " · administrators" : "")</span>
+                                </div>
+                            }
+                        </td>
+                        <td>
+                            @if (!module.Enabled)
+                            {
+                                <StatusBadge Text="Switched off" Tone="muted" />
+                            }
+                            else if (module.Initialized)
                             {
                                 <StatusBadge Text="Loaded" Tone="success" />
                             }
                             else
                             {
                                 <StatusBadge Text="Failed to start" Tone="danger" />
-                                <div class="field-error">@module.Error</div>
+                            }
+                            @if (module.Error is { } error)
+                            {
+                                <div class="field-error">@error</div>
+                            }
+                        </td>
+                        <td>
+                            <label class="switch" title="@SwitchTitle(module)">
+                                <input type="checkbox" role="switch" aria-label="@($"{module.Name} on")" checked="@module.Enabled"
+                                       disabled="@(!CanSwitch(module))" @onchange="e => SwitchAsync(module, e.Value is true)" />
+                                <span class="slider" aria-hidden="true"></span>
+                            </label>
+                            @if (!module.CanBeDisabled)
+                            {
+                                <div class="hint">Always on</div>
+                            }
+                        </td>
+                        <td>
+                            @if (module.Name == AdminGuiModule.ModuleName)
+                            {
+                                <StatusBadge Text="Running" Tone="success" />
+                                <div class="hint">This is the application you are using. Close the window to stop it.</div>
+                            }
+                            else if (app is null)
+                            {
+                                <span class="muted">None</span>
+                            }
+                            else
+                            {
+                                var status = _statuses.GetValueOrDefault(app.ModuleName);
+                                var busy = _busy.Contains(app.ModuleName);
+                                <div>
+                                    @if (status is null)
+                                    {
+                                        <span class="muted">Checking…</span>
+                                    }
+                                    else
+                                    {
+                                        <StatusBadge Text="@(status.IsRunning ? "Running" : "Stopped")" Tone="@(status.IsRunning ? "success" : "muted")" />
+                                        <div class="hint">@(module.Enabled ? status.Message : status.Message + " Switch the module on to launch it.")</div>
+                                    }
+                                </div>
+                                @if (CurrentUser.IsAdministrator)
+                                {
+                                    <div class="actions">
+                                        <button class="btn btn-small btn-primary" @onclick="() => LaunchAsync(app)"
+                                                disabled="@(busy || !module.Enabled || status is not { IsRunning: false })"
+                                                title="@(module.Enabled ? $"Launch the {app.DisplayName}" : "Switch the module on first")">
+                                            @(busy && _launching.Contains(app.ModuleName) ? "Launching…" : "Launch")
+                                        </button>
+                                        <button class="btn btn-small" @onclick="() => StopAsync(app)" disabled="@(busy || !module.Enabled || status is not { IsRunning: true })"
+                                                title="@($"Stop the {app.DisplayName}")">
+                                            @(busy && !_launching.Contains(app.ModuleName) ? "Stopping…" : "Stop")
+                                        </button>
+                                    </div>
+                                }
                             }
                         </td>
                     </tr>
@@ -48,10 +147,16 @@
         <tbody>
             @foreach (var type in _types.OrderBy(t => t.Assembly.GetName().Name).ThenBy(t => t.TaskType))
             {
-                <tr>
+                <tr class="@(Registry.IsEnabled(type) ? "" : "row-muted")">
                     <td class="mono">@type.TaskType</td>
                     <td>@type.DisplayName</td>
-                    <td class="mono">@type.Assembly.GetName().Name</td>
+                    <td class="mono">
+                        @type.Assembly.GetName().Name
+                        @if (!Registry.IsEnabled(type))
+                        {
+                            <div><StatusBadge Text="Switched off" Tone="muted" Title="Tasks of this type wait until the module is switched on." /></div>
+                        }
+                    </td>
                     <td>@type.Description</td>
                 </tr>
             }
@@ -61,7 +166,143 @@
 
 @code {
     private IReadOnlyList<TaskTypeInfo> _types = [];
+    private readonly Dictionary<string, ManagedApplicationStatus> _statuses = new();
+    private readonly HashSet<string> _busy = [];
+    private readonly HashSet<string> _launching = [];
+    private bool _refreshing;
 
-    protected override async Task OnInitializedAsync() =>
+    private IReadOnlyList<ModuleMenuItem> MenuItemsOf(string moduleName) =>
+        ModuleList.FirstOrDefault(m => m.Name == moduleName)?.MenuItems ?? [];
+
+    private IManagedApplication? ApplicationOf(string moduleName) =>
+        Applications.FirstOrDefault(a => string.Equals(a.ModuleName, moduleName, StringComparison.OrdinalIgnoreCase));
+
+    private bool CanSwitch(ModuleStatus module) => CurrentUser.IsAdministrator && module.CanBeDisabled && !_busy.Contains(module.Name);
+
+    private string SwitchTitle(ModuleStatus module) =>
+        !module.CanBeDisabled ? "This module cannot be switched off: the application needs it."
+        : !CurrentUser.IsAdministrator ? "Only administrators can switch modules on and off."
+        : module.Enabled ? "Switch this module off" : "Switch this module on";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Switches.Changed += OnSwitched;
         _types = (await GetTaskTypes.HandleAsync(new GetTaskTypesQuery())).Value ?? [];
+        await LoadStatusesAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _refreshing = true;
+        try
+        {
+            await LoadStatusesAsync();
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private async Task LoadStatusesAsync()
+    {
+        foreach (var app in Applications)
+        {
+            await LoadStatusAsync(app);
+        }
+    }
+
+    private async Task LoadStatusAsync(IManagedApplication app)
+    {
+        try
+        {
+            _statuses[app.ModuleName] = await app.GetStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _statuses[app.ModuleName] = new ManagedApplicationStatus(ManagedApplicationState.Stopped, "Its status could not be read: " + ex.Message);
+        }
+    }
+
+    private async Task SwitchAsync(ModuleStatus module, bool enabled)
+    {
+        _busy.Add(module.Name);
+        try
+        {
+            var result = await Host.SetModuleEnabledAsync(module.Name, enabled, CurrentUser.Username);
+            if (result.Status.Error is { } error)
+            {
+                Toasts.Error($"{module.Name} was switched {(enabled ? "on" : "off")}, but reported a problem: {error}");
+            }
+            else
+            {
+                Toasts.Success(enabled ? $"{module.Name} is switched on." : $"{module.Name} is switched off. Its tasks wait until it is switched on again.");
+            }
+
+            if (result.ApplicationMessage is { } message)
+            {
+                if (result.ApplicationFailed)
+                {
+                    Toasts.Error(message);
+                }
+                else
+                {
+                    Toasts.Success(message);
+                }
+            }
+
+            if (ApplicationOf(module.Name) is { } app)
+            {
+                await LoadStatusAsync(app);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error($"{module.Name} could not be switched {(enabled ? "on" : "off")}: {ex.Message}");
+        }
+        finally
+        {
+            _busy.Remove(module.Name);
+        }
+    }
+
+    private Task LaunchAsync(IManagedApplication app) => RunAsync(app, launch: true);
+
+    private Task StopAsync(IManagedApplication app) => RunAsync(app, launch: false);
+
+    private async Task RunAsync(IManagedApplication app, bool launch)
+    {
+        _busy.Add(app.ModuleName);
+        if (launch)
+        {
+            _launching.Add(app.ModuleName);
+        }
+
+        try
+        {
+            var result = launch ? await app.StartAsync() : await app.StopAsync();
+            if (result.Succeeded)
+            {
+                Toasts.Success(result.Message);
+            }
+            else
+            {
+                Toasts.Error(result.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error($"The {app.DisplayName} could not be {(launch ? "launched" : "stopped")}: {ex.Message}");
+        }
+        finally
+        {
+            _busy.Remove(app.ModuleName);
+            _launching.Remove(app.ModuleName);
+            await LoadStatusAsync(app);
+        }
+    }
+
+    private void OnSwitched(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Switches.Changed -= OnSwitched;
 }

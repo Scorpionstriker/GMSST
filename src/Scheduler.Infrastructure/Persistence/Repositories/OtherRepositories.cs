@@ -33,11 +33,21 @@ internal sealed class WorkerRepository(SchedulerDbContext context) : IWorkerRepo
         context.WorkerThreads.Where(w => w.HostName == hostName && w.Status != WorkerStatus.Stopped)
             .ExecuteUpdateAsync(s => s.SetProperty(w => w.LastHeartbeatUtc, nowUtc), cancellationToken);
 
-    public Task<int> MarkStaleAsStoppedAsync(DateTime staleBeforeUtc, DateTime nowUtc, CancellationToken cancellationToken = default) =>
-        context.WorkerThreads.Where(w => w.Status != WorkerStatus.Stopped && w.LastHeartbeatUtc < staleBeforeUtc)
+    public Task<int> MarkStaleAsStoppedAsync(DateTime staleBeforeUtc, DateTime nowUtc, string thisHost, CancellationToken cancellationToken = default) =>
+        context.WorkerThreads.Where(w => w.Status != WorkerStatus.Stopped && w.LastHeartbeatUtc < staleBeforeUtc && w.HostName != thisHost)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(w => w.Status, WorkerStatus.Stopped)
                 .SetProperty(w => w.CurrentExecutionId, (Guid?)null), cancellationToken);
+
+    public Task<int> ReviveStoppedAsync(string hostName, IReadOnlyCollection<Guid> workerIds, DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        var ids = workerIds.ToList();
+        return context.WorkerThreads.Where(w => w.HostName == hostName && w.Status == WorkerStatus.Stopped && ids.Contains(w.Id))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(w => w.Status, WorkerStatus.Idle)
+                .SetProperty(w => w.CurrentExecutionId, (Guid?)null)
+                .SetProperty(w => w.LastHeartbeatUtc, nowUtc), cancellationToken);
+    }
 
     public Task MarkHostStoppedAsync(string hostName, DateTime nowUtc, CancellationToken cancellationToken = default) =>
         context.WorkerThreads.Where(w => w.HostName == hostName && w.Status != WorkerStatus.Stopped)

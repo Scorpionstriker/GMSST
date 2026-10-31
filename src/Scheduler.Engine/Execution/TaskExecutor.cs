@@ -21,6 +21,12 @@ public sealed class TaskExecutor
     /// <summary>A handler that ignores its cancellation token is abandoned this long after its time-out.</summary>
     internal static TimeSpan AbandonGrace { get; set; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>Waits between attempts to save a result (WP-2): three more attempts after 1, 2 and 4 seconds.</summary>
+    internal static TimeSpan[] SaveRetryDelays { get; set; } = [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4)];
+
+    /// <summary>Test hook, called with the task id just before a result is saved; it may throw to simulate a failed save.</summary>
+    internal static Func<Guid, Task>? BeforeResultSaved { get; set; }
+
     private readonly IUnitOfWorkFactory _unitOfWorkFactory;
     private readonly ITaskTypeRegistry _registry;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -73,15 +79,28 @@ public sealed class TaskExecutor
 
         var outcome = await RunHandlerAsync(run, stopToken);
 
-        try
+        // WP-2: a short database problem should not cost a run, so saving the result is tried four times. If it still
+        // fails, the entry stays claimed and recovery queues the task again when the lease expires: delivery is
+        // at-least-once, so a handler may run again after it finished (handlers must be idempotent, see ITaskHandler).
+        for (var attempt = 0; ; attempt++)
         {
-            await CompleteAsync(run, workerId, outcome);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "The result of execution {ExecutionId} could not be saved.", run.ExecutionId);
-            await _log.LogAsync(SchedulerLogLevel.Error, LogSources.Executor, "The result of an execution could not be saved; recovery will retry it.",
-                run.ExecutionId, new Dictionary<string, object?> { ["error"] = ex.Message });
+            try
+            {
+                await CompleteAsync(run, workerId, outcome);
+                return;
+            }
+            catch (Exception ex) when (attempt < SaveRetryDelays.Length)
+            {
+                _logger.LogWarning(ex, "Saving the result of execution {ExecutionId} failed; trying again.", run.ExecutionId);
+                await Task.Delay(SaveRetryDelays[attempt], CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "The result of execution {ExecutionId} could not be saved.", run.ExecutionId);
+                await _log.LogAsync(SchedulerLogLevel.Error, LogSources.Executor, "The result of an execution could not be saved; recovery will retry it.",
+                    run.ExecutionId, new Dictionary<string, object?> { ["error"] = ex.Message });
+                return;
+            }
         }
     }
 
@@ -94,9 +113,8 @@ public sealed class TaskExecutor
             return null;
         }
 
-        // Only Active tasks run; a manual run of a paused task is allowed (FR-03, FR-24).
-        var runnable = !task.IsDeleted && (task.Status == ScheduledTaskStatus.Active
-                                           || (task.Status == ScheduledTaskStatus.Paused && entry.TriggerType == TriggerType.Manual));
+        // Only Active tasks run; a manual run of a paused task, and its retries, are allowed (FR-02, FR-03, WP-6).
+        var runnable = entry.MayRun(task);
         if (!runnable)
         {
             entry.Cancel();
@@ -107,9 +125,21 @@ public sealed class TaskExecutor
         }
 
         var now = Now;
+        var worker = await unitOfWork.Workers.GetAsync(workerId);
+        if (worker is { Status: WorkerStatus.Stopped })
+        {
+            // Safety net (WP-1): the worker row was marked Stopped, so it cannot become Busy. The claim goes back to the
+            // queue and the engine revives the worker in its next cycle.
+            entry.ReleaseClaim();
+            await unitOfWork.SaveChangesAsync();
+            await _log.LogAsync(SchedulerLogLevel.Warning, LogSources.Executor,
+                $"The run of '{task.Name}' was returned to the queue because its worker was marked as stopped.");
+            return null;
+        }
+
         var execution = TaskExecution.Start(entry, workerId, now);
         unitOfWork.Executions.Add(execution);
-        (await unitOfWork.Workers.GetAsync(workerId))?.MarkBusy(execution.Id, now);
+        worker?.MarkBusy(execution.Id, now);
         await unitOfWork.SaveChangesAsync();
 
         return new StartedRun(execution.Id, entry.Id, task.Id, task.Name, task.TaskType, task.Payload, task.TimeoutSeconds, entry.Attempt,
@@ -254,6 +284,12 @@ public sealed class TaskExecutor
     {
         await using var unitOfWork = _unitOfWorkFactory.Create();
         var execution = await unitOfWork.Executions.GetAsync(run.ExecutionId) ?? throw new InvalidOperationException("The execution record is missing.");
+        if (execution.Status != ExecutionStatus.Running)
+        {
+            // An earlier attempt saved the result (or recovery already handled the run).
+            return;
+        }
+
         var entry = await unitOfWork.Queue.GetAsync(run.QueueEntryId) ?? throw new InvalidOperationException("The queue entry is missing.");
         var task = entry.Task!;
         var now = Now;
@@ -267,7 +303,13 @@ public sealed class TaskExecutor
                 entry.MarkProcessed();
                 foreach (var dependant in await unitOfWork.Tasks.GetActiveDependantsAsync(task.Id))
                 {
-                    // One waiting dependency run is enough, however many prerequisites succeed (Algorithm 6.10).
+                    // WP-6 "All" rule (FR-26): queued only once every prerequisite has succeeded since the last
+                    // dependency run, and one waiting dependency run is enough (Algorithm 6.10).
+                    if (!await unitOfWork.Tasks.AllPrerequisitesSucceededAsync(dependant.Id, task.Id))
+                    {
+                        continue;
+                    }
+
                     var waiting = await unitOfWork.Queue.GetWaitingForTaskAsync(dependant.Id);
                     if (waiting.All(w => w.TriggerType != TriggerType.Dependency))
                     {
@@ -282,7 +324,7 @@ public sealed class TaskExecutor
                 // Stopped by shutdown or pause: the run is recorded as cancelled and queued again, so no work is lost (NFR-01).
                 execution.Complete(ExecutionStatus.Cancelled, now, null);
                 entry.MarkProcessed();
-                unitOfWork.Queue.Add(QueueEntry.Create(task, entry.ScheduleId, entry.TriggerType, now, entry.Attempt, now));
+                unitOfWork.Queue.Add(entry.FollowUp(task, entry.TriggerType, now, entry.Attempt, now));
                 break;
 
             default:
@@ -296,6 +338,11 @@ public sealed class TaskExecutor
         if (worker is { Status: WorkerStatus.Busy })
         {
             worker.MarkIdle(now);
+        }
+
+        if (BeforeResultSaved is { } hook)
+        {
+            await hook(task.Id);
         }
 
         await unitOfWork.SaveChangesAsync();

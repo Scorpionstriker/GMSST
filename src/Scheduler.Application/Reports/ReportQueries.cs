@@ -11,9 +11,12 @@ public interface IReportQueries
     Task<IReadOnlyList<FailureRow>> GetFailuresAsync(ReportFilter filter, int maxRows, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PerformanceRow>> GetPerformanceAsync(ReportFilter filter, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<LoginAuditRow>> GetLoginAuditAsync(ReportFilter filter, int maxRows, CancellationToken cancellationToken = default);
+
+    /// <summary>Account and security setting changes: log entries with source Security (WP-4c).</summary>
+    Task<IReadOnlyList<SecurityEventRow>> GetSecurityEventsAsync(ReportFilter filter, int maxRows, CancellationToken cancellationToken = default);
 }
 
-public sealed record ReportFilter(DateTime FromUtc, DateTime ToUtc, Guid? TaskId, ExecutionStatus? Status);
+public sealed record ReportFilter(DateTime FromUtc, DateTime ToUtc, Guid? TaskId, ExecutionStatus? Status, bool? Succeeded = null);
 
 public sealed record ExecutionSummaryRow(Guid TaskId, string TaskName, int Total, int Succeeded, int Failed, int TimedOut, int Cancelled, int Retrying)
 {
@@ -26,6 +29,8 @@ public sealed record FailureRow(Guid ExecutionId, string TaskName, DateTime Star
 public sealed record PerformanceRow(Guid TaskId, string TaskName, int Runs, double AverageMs, int MinimumMs, int MaximumMs, double AverageDelayMs);
 
 public sealed record LoginAuditRow(DateTime AttemptedAtUtc, string Username, bool Succeeded, string? Reason);
+
+public sealed record SecurityEventRow(DateTime LoggedAtUtc, string User, string Action, string Message);
 
 public sealed record DashboardData(
     string? NextRunTaskName,

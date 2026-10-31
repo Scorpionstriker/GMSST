@@ -134,8 +134,8 @@
     {
         var product = _confirmDelete!;
         _confirmDelete = null;
-        await Store.DeleteProductAsync(product.Id);
-        _notice = $"Product {product.Sku} was deleted.";
+        _error = await Store.DeleteProductAsync(product.Id);
+        _notice = _error is null ? $"Product {product.Sku} was deleted." : null;
         await LoadAsync();
     }
 }

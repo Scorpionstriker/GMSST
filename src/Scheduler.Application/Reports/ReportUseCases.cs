@@ -17,7 +17,16 @@ public enum ReportType
 }
 
 /// <summary>Report parameters: date range of at most 366 days, optional task and status (FR-65).</summary>
-public sealed record GenerateReportQuery(ReportType Type, DateTime FromUtc, DateTime ToUtc, Guid? TaskId = null, ExecutionStatus? Status = null);
+/// <param name="Type">The report.</param>
+/// <param name="FromUtc">Start of the range (inclusive).</param>
+/// <param name="ToUtc">End of the range (exclusive).</param>
+/// <param name="TaskId">Optional task filter (not used by the Security and audit report).</param>
+/// <param name="Status">Status filter for the Execution summary, Failures and errors and Performance reports (WP-8c).</param>
+/// <param name="Succeeded">Outcome filter for the Security and audit report: true, false or null for both (WP-8c).</param>
+/// <param name="FromDate">The local From date the user picked, for the header and file name (WP-8e).</param>
+/// <param name="ToDate">The local To date the user picked, inclusive (WP-8e).</param>
+public sealed record GenerateReportQuery(ReportType Type, DateTime FromUtc, DateTime ToUtc, Guid? TaskId = null, ExecutionStatus? Status = null,
+    bool? Succeeded = null, DateOnly? FromDate = null, DateOnly? ToDate = null);
 
 /// <summary>Dashboard indicators, chart data and recent executions (FR-56).</summary>
 public sealed record GetDashboardQuery;
@@ -35,8 +44,9 @@ public sealed record ReportResult(
     IReadOnlyList<IReadOnlyList<string?>> Rows,
     bool Truncated)
 {
-    public CsvFile ToCsv(DateTime fromUtc, DateTime toUtc) =>
-        new($"{FileStem(Type)}_{fromUtc:yyyyMMdd}_{toUtc:yyyyMMdd}.csv", CsvWriter.Write(Columns, Rows));
+    /// <summary>The CSV file, named after the local From and To dates the user picked, both inclusive (WP-8e).</summary>
+    public CsvFile ToCsv(DateOnly fromDate, DateOnly toDate) =>
+        new($"{FileStem(Type)}_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}.csv", CsvWriter.Write(Columns, Rows));
 
     private static string FileStem(ReportType type) => type switch
     {
@@ -82,9 +92,12 @@ internal sealed class GenerateReportHandler(IReportQueries queries, ITaskQueries
 
     public async Task<Result<ReportResult>> HandleAsync(GenerateReportQuery query, CancellationToken cancellationToken = default)
     {
-        var filter = new ReportFilter(query.FromUtc, query.ToUtc, query.TaskId, query.Status);
-        var parameters = $"{query.FromUtc:yyyy-MM-dd HH:mm} to {query.ToUtc:yyyy-MM-dd HH:mm} UTC" +
-                         (query.Status is null ? string.Empty : $", status {query.Status}");
+        var filter = new ReportFilter(query.FromUtc, query.ToUtc, query.TaskId, query.Status, query.Succeeded);
+        var parameters = (query.FromDate is { } fromDate && query.ToDate is { } toDate
+                             ? $"{fromDate:yyyy-MM-dd} to {toDate:yyyy-MM-dd} (local dates, inclusive)"
+                             : $"{query.FromUtc:yyyy-MM-dd HH:mm} to {query.ToUtc:yyyy-MM-dd HH:mm} UTC") +
+                         (query.Status is null || query.Type is ReportType.UpcomingSchedule or ReportType.SecurityAudit ? string.Empty : $", status {query.Status}") +
+                         (query.Succeeded is not { } outcome || query.Type != ReportType.SecurityAudit ? string.Empty : outcome ? ", succeeded only" : ", failed only");
         var now = clock.GetUtcNow().UtcDateTime;
 
         var report = query.Type switch
@@ -93,7 +106,9 @@ internal sealed class GenerateReportHandler(IReportQueries queries, ITaskQueries
             ReportType.FailuresAndErrors => Failures(await queries.GetFailuresAsync(filter, MaxDetailRows + 1, cancellationToken), parameters, now),
             ReportType.Performance => Performance(await queries.GetPerformanceAsync(filter, cancellationToken), parameters, now),
             ReportType.UpcomingSchedule => Upcoming(await taskQueries.GetActiveSchedulesAsync(query.TaskId, cancellationToken), query, parameters, now),
-            _ => Security(await queries.GetLoginAuditAsync(filter, MaxDetailRows + 1, cancellationToken), parameters, now)
+            _ => Security(
+                await queries.GetLoginAuditAsync(filter, MaxDetailRows + 1, cancellationToken),
+                query.Succeeded == false ? [] : await queries.GetSecurityEventsAsync(filter, MaxDetailRows + 1, cancellationToken), parameters, now)
         };
 
         return Result.Success(report);
@@ -218,27 +233,38 @@ internal sealed class GenerateReportHandler(IReportQueries queries, ITaskQueries
             truncated);
     }
 
-    private static ReportResult Security(IReadOnlyList<LoginAuditRow> rows, string parameters, DateTime now)
+    // WP-4c: sign-in attempts and the account and security setting changes, newest first, in one table.
+    private static ReportResult Security(IReadOnlyList<LoginAuditRow> rows, IReadOnlyList<SecurityEventRow> events, string parameters, DateTime now)
     {
-        var truncated = rows.Count > MaxDetailRows;
+        var truncated = rows.Count > MaxDetailRows || events.Count > MaxDetailRows;
         var shown = rows.Take(MaxDetailRows).ToList();
+        var changes = events.Take(MaxDetailRows).ToList();
         var perDay = shown.GroupBy(r => r.AttemptedAtUtc.Date).OrderBy(g => g.Key).TakeLast(31).ToList();
+        var table = shown
+            .Select(r => (Time: r.AttemptedAtUtc, Row: (IReadOnlyList<string?>)
+                [r.AttemptedAtUtc.ToString("yyyy-MM-dd HH:mm:ss", Invariant), r.Username, r.Succeeded ? "Sign-in succeeded" : "Sign-in failed", r.Reason]))
+            .Concat(changes.Select(e => (Time: e.LoggedAtUtc, Row: (IReadOnlyList<string?>)
+                [e.LoggedAtUtc.ToString("yyyy-MM-dd HH:mm:ss", Invariant), e.User, e.Action, e.Message])))
+            .OrderByDescending(r => r.Time)
+            .Take(MaxDetailRows)
+            .Select(r => r.Row)
+            .ToList();
 
         return new ReportResult(ReportType.SecurityAudit, "Security and audit report", "Has anyone attempted to access the system improperly?", parameters, now,
             [
-                new("Sign-in attempts", shown.Count.ToString("N0", Invariant) + (truncated ? "+" : string.Empty)),
+                new("Sign-in attempts", shown.Count.ToString("N0", Invariant) + (rows.Count > MaxDetailRows ? "+" : string.Empty)),
                 new("Successful", shown.Count(r => r.Succeeded).ToString("N0", Invariant)),
                 new("Failed", shown.Count(r => !r.Succeeded).ToString("N0", Invariant)),
-                new("Lockouts", shown.Count(r => r.Reason == "LockedOut").ToString("N0", Invariant))
+                new("Lockouts", shown.Count(r => r.Reason == "LockedOut").ToString("N0", Invariant)),
+                new("Account and setting changes", changes.Count.ToString("N0", Invariant) + (events.Count > MaxDetailRows ? "+" : string.Empty))
             ],
             new ReportChart("Sign-in attempts per day (UTC)", perDay.Select(g => g.Key.ToString("MM-dd", Invariant)).ToList(),
             [
                 new("Successful", perDay.Select(g => (double)g.Count(r => r.Succeeded)).ToList(), "series-success"),
                 new("Failed", perDay.Select(g => (double)g.Count(r => !r.Succeeded)).ToList(), "series-failed")
             ]),
-            ["Time (UTC)", "Username", "Result", "Reason"],
-            shown.Select(r => (IReadOnlyList<string?>)
-                [r.AttemptedAtUtc.ToString("yyyy-MM-dd HH:mm:ss", Invariant), r.Username, r.Succeeded ? "Succeeded" : "Failed", r.Reason]).ToList(),
+            ["Time (UTC)", "User", "Event", "Details"],
+            table,
             truncated);
     }
 

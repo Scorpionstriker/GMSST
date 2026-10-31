@@ -1,5 +1,6 @@
 using System.Text.Json;
-using DemoApps.MaintenanceAgent.Handlers;
+using DemoApps.MaintenanceAgent.Services;
+using DemoApps.MaintenanceAgentConnector;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Scheduler.Domain.Enums;
@@ -62,11 +63,72 @@ public class HandlerTests
         var root = Path.Combine(Path.GetTempPath(), "GMSS");
         string[] roots = [root];
 
-        Assert.True(TempFileCleanupHandler.IsInside(root, roots));
-        Assert.True(TempFileCleanupHandler.IsInside(Path.Combine(root, "reports"), roots));
-        Assert.False(TempFileCleanupHandler.IsInside(root + "-other", roots));
-        Assert.False(TempFileCleanupHandler.IsInside(Path.Combine(root, "..", "elsewhere"), roots));
-        Assert.False(TempFileCleanupHandler.IsInside(Path.GetTempPath(), roots));
+        Assert.True(TempFileCleaner.IsInside(root, roots));
+        Assert.True(TempFileCleaner.IsInside(Path.Combine(root, "reports"), roots));
+        Assert.False(TempFileCleaner.IsInside(root + "-other", roots));
+        Assert.False(TempFileCleaner.IsInside(Path.Combine(root, "..", "elsewhere"), roots));
+        Assert.False(TempFileCleaner.IsInside(Path.GetTempPath(), roots));
+    }
+
+    [Fact]
+    public void LocalHttp_ReadsEnvHeaderValuesWhenTheTaskRuns()
+    {
+        Environment.SetEnvironmentVariable("GSST_TEST_HEADER_KEY", "secret-value");
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "http://127.0.0.1/");
+            var error = LocalHttpRequestHandler.AddHeaders(
+                new FakeContext("""{ "headers": { "X-GSST-Key": "env:GSST_TEST_HEADER_KEY", "X-Plain": "text" } }"""), request);
+
+            Assert.Null(error);
+            Assert.Equal("secret-value", request.Headers.GetValues("X-GSST-Key").Single());
+            Assert.Equal("text", request.Headers.GetValues("X-Plain").Single());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("GSST_TEST_HEADER_KEY", null);
+        }
+    }
+
+    [Fact]
+    public void LocalHttp_FailsWhenAnEnvHeaderVariableIsMissing()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "http://127.0.0.1/");
+        var error = LocalHttpRequestHandler.AddHeaders(new FakeContext("""{ "headers": { "X-GSST-Key": "env:GSST_TEST_NOT_SET_ANYWHERE" } }"""), request);
+
+        Assert.Equal("The environment variable GSST_TEST_NOT_SET_ANYWHERE for header 'X-GSST-Key' is not set on this computer.", error);
+    }
+
+    [Fact]
+    public async Task LocalHttp_UsesTheNotRunningMessageWhenNothingListens()
+    {
+        // Port 9 (discard) is not served on a development computer, so the connection is refused.
+        var result = await new LocalHttpRequestHandler().ExecuteAsync(new FakeContext(
+            """{ "url": "http://127.0.0.1:9/health", "notRunningMessage": "The Maintenance Agent is not running on port 9." }"""));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("The Maintenance Agent is not running on port 9.", result.Message);
+    }
+
+    [Fact]
+    public void AgentKey_IsRequiredAndCompared()
+    {
+        Assert.True(new AgentKeyFilter("abc").IsValid("abc"));
+        Assert.False(new AgentKeyFilter("abc").IsValid("abd"));
+        Assert.False(new AgentKeyFilter("abc").IsValid(null));
+        Assert.False(new AgentKeyFilter(null).IsValid(""));
+        Assert.False(new AgentKeyFilter(null).IsValid("anything"));
+    }
+
+    [Fact]
+    public void Connector_TaskPayloadKeepsTheKeyOutOfTheDatabase()
+    {
+        var payload = JsonDocument.Parse(MaintenanceAgentConnectorModule.BuildPayload(new AgentClient(), "/health", "GET")).RootElement;
+
+        Assert.Equal("http://127.0.0.1:5087/health", payload.GetProperty("url").GetString());
+        Assert.Equal("env:GSST_AGENT_KEY", payload.GetProperty("headers").GetProperty("X-GSST-Key").GetString());
+        Assert.Equal("The Maintenance Agent is not running on port 5087.", payload.GetProperty("notRunningMessage").GetString());
+        Assert.False(payload.TryGetProperty("body", out _));
     }
 
     private sealed class FakeContext(string payload) : ITaskContext

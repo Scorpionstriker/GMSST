@@ -31,6 +31,9 @@ public sealed class ConfigurationSetting
     public static ConfigurationSetting ForTask(Guid taskId, string key, string value, DateTime nowUtc) => new(taskId, key, value, nowUtc);
 
     public Guid Id { get; private set; } = Guid.CreateVersion7();
+
+    /// <summary>PostgreSQL xmin, used for optimistic concurrency (WP-7, F-27).</summary>
+    public uint Version { get; private set; }
     public Guid? TaskId { get; private set; }
     public string Key { get; private set; }
     public string Value { get; private set; }

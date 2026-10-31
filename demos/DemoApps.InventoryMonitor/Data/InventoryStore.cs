@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Globalization;
 using System.Text.Json;
+using Scheduler.Extensibility.Contracts;
 
 namespace DemoApps.InventoryMonitor.Data;
 
@@ -15,21 +16,29 @@ public sealed record StockReport(Guid Id, string ReportType, DateTime CreatedAtU
 public sealed record LowStockLine(string Sku, string Name, int QuantityOnHand, int ReorderLevel);
 
 /// <summary>
-/// The module's own data in the "demo" schema of the scheduler's database (FR-78). It uses the connection pool the
-/// host registers as <see cref="DbDataSource"/>, so the module needs no reference to the scheduler's data layer.
-/// All SQL is parameterised (Phase 4, Section 8.4).
+/// The module's own data, in the "inventory" schema of its own database inventory_demo (FR-78, WP-1). The connection
+/// comes from <see cref="IModuleDatabases"/> and the "Inventory" configuration section, so the module needs no reference
+/// to the scheduler's data layer and never writes to the scheduler's database. Changes to products and stock need
+/// the Administrator role (WP-4). All SQL is parameterised (Phase 4, Section 8.4).
 /// </summary>
-public sealed class InventoryStore(DbDataSource dataSource)
+public sealed class InventoryStore(IModuleDatabases databases, ICurrentUser currentUser)
 {
+    public const string ConfigurationSection = "Inventory";
+    public const string DefaultDatabaseName = "inventory_demo";
+    internal const string AdministratorOnly = "Only an administrator can change products and stock.";
+
     public const string ReportStock = "StockReport";
     public const string ReportLowStock = "LowStock";
     public const string ReportWeekly = "WeeklySummary";
 
-    // Idempotent schema script: the module's equivalent of a migration, applied at start-up.
+    private DbDataSource DataSource => databases.Get(ConfigurationSection, DefaultDatabaseName);
+
+    // Idempotent schema script: the module's equivalent of a migration, applied at start-up. execution_id makes a
+    // report idempotent: a run that is repeated after a crash finds its report already written (WP-2).
     private const string SchemaSql =
         """
-        CREATE SCHEMA IF NOT EXISTS demo;
-        CREATE TABLE IF NOT EXISTS demo.product (
+        CREATE SCHEMA IF NOT EXISTS inventory;
+        CREATE TABLE IF NOT EXISTS inventory.product (
             product_id UUID PRIMARY KEY,
             sku VARCHAR(30) NOT NULL,
             name VARCHAR(100) NOT NULL,
@@ -37,28 +46,40 @@ public sealed class InventoryStore(DbDataSource dataSource)
             quantity_on_hand INTEGER NOT NULL CHECK (quantity_on_hand >= 0),
             reorder_level INTEGER NOT NULL CHECK (reorder_level >= 0),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
-        CREATE UNIQUE INDEX IF NOT EXISTS ux_product_sku ON demo.product (lower(sku));
-        CREATE TABLE IF NOT EXISTS demo.stock_report (
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_product_sku ON inventory.product (lower(sku));
+        CREATE TABLE IF NOT EXISTS inventory.stock_report (
             report_id UUID PRIMARY KEY,
             report_type VARCHAR(20) NOT NULL CHECK (report_type IN ('StockReport', 'LowStock', 'WeeklySummary')),
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             product_count INTEGER NOT NULL,
             low_stock_count INTEGER NOT NULL,
             total_value NUMERIC(14,2) NOT NULL,
-            details JSONB NOT NULL DEFAULT '{}');
-        CREATE INDEX IF NOT EXISTS ix_stock_report_time ON demo.stock_report (report_type, created_at DESC);
+            details JSONB NOT NULL DEFAULT '{}',
+            execution_id UUID NULL);
+        ALTER TABLE inventory.stock_report ADD COLUMN IF NOT EXISTS execution_id UUID NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_stock_report_execution ON inventory.stock_report (execution_id);
+        CREATE INDEX IF NOT EXISTS ix_stock_report_time ON inventory.stock_report (report_type, created_at DESC);
         """;
 
     public async Task EnsureSchemaAsync(CancellationToken cancellationToken = default)
     {
-        await using var command = dataSource.CreateCommand(SchemaSql);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        try
+        {
+            await using var command = DataSource.CreateCommand(SchemaSql);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (DbException ex) when (ex.SqlState == "3D000")
+        {
+            var name = databases.GetDatabaseName(ConfigurationSection, DefaultDatabaseName);
+            throw new InvalidOperationException(
+                $"The database {name} does not exist. Run database\\setup_windows.ps1 (or database/create_database.sql) to create it.", ex);
+        }
     }
 
     /// <summary>Adds sample products the first time, so the demonstration has data to work with.</summary>
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        await using (var count = dataSource.CreateCommand("SELECT count(*) FROM demo.product"))
+        await using (var count = DataSource.CreateCommand("SELECT count(*) FROM inventory.product"))
         {
             if (Convert.ToInt64(await count.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) > 0)
             {
@@ -80,14 +101,22 @@ public sealed class InventoryStore(DbDataSource dataSource)
 
         foreach (var sample in samples)
         {
-            await SaveProductAsync(null, sample.Sku, sample.Name, sample.Price, sample.Quantity, sample.Reorder, cancellationToken);
+            await using var insert = DataSource.CreateCommand(
+                "INSERT INTO inventory.product (product_id, sku, name, unit_price, quantity_on_hand, reorder_level) VALUES (@id, @sku, @name, @price, @qty, @reorder)");
+            Add(insert, "id", Guid.CreateVersion7());
+            Add(insert, "sku", sample.Sku);
+            Add(insert, "name", sample.Name);
+            Add(insert, "price", sample.Price);
+            Add(insert, "qty", sample.Quantity);
+            Add(insert, "reorder", sample.Reorder);
+            await insert.ExecuteNonQueryAsync(cancellationToken);
         }
     }
 
     public async Task<IReadOnlyList<Product>> GetProductsAsync(CancellationToken cancellationToken = default)
     {
-        await using var command = dataSource.CreateCommand(
-            "SELECT product_id, sku, name, unit_price, quantity_on_hand, reorder_level, updated_at FROM demo.product ORDER BY name");
+        await using var command = DataSource.CreateCommand(
+            "SELECT product_id, sku, name, unit_price, quantity_on_hand, reorder_level, updated_at FROM inventory.product ORDER BY name");
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var products = new List<Product>();
         while (await reader.ReadAsync(cancellationToken))
@@ -103,6 +132,11 @@ public sealed class InventoryStore(DbDataSource dataSource)
     public async Task<string?> SaveProductAsync(Guid? id, string sku, string name, decimal unitPrice, int quantity, int reorderLevel,
         CancellationToken cancellationToken = default)
     {
+        if (!currentUser.IsAdministrator)
+        {
+            return AdministratorOnly;
+        }
+
         sku = sku.Trim().ToUpperInvariant();
         name = name.Trim();
         if (sku.Length is 0 or > 30 || name.Length is 0 or > 100)
@@ -115,9 +149,9 @@ public sealed class InventoryStore(DbDataSource dataSource)
             return "Price, quantity and reorder level cannot be negative.";
         }
 
-        await using var command = dataSource.CreateCommand(id is null
-            ? "INSERT INTO demo.product (product_id, sku, name, unit_price, quantity_on_hand, reorder_level) VALUES (@id, @sku, @name, @price, @qty, @reorder)"
-            : "UPDATE demo.product SET sku = @sku, name = @name, unit_price = @price, quantity_on_hand = @qty, reorder_level = @reorder, updated_at = now() WHERE product_id = @id");
+        await using var command = DataSource.CreateCommand(id is null
+            ? "INSERT INTO inventory.product (product_id, sku, name, unit_price, quantity_on_hand, reorder_level) VALUES (@id, @sku, @name, @price, @qty, @reorder)"
+            : "UPDATE inventory.product SET sku = @sku, name = @name, unit_price = @price, quantity_on_hand = @qty, reorder_level = @reorder, updated_at = now() WHERE product_id = @id");
         Add(command, "id", id ?? Guid.CreateVersion7());
         Add(command, "sku", sku);
         Add(command, "name", name);
@@ -138,27 +172,49 @@ public sealed class InventoryStore(DbDataSource dataSource)
     /// <summary>Adds (positive) or removes (negative) stock. Returns an error message or null.</summary>
     public async Task<string?> AdjustStockAsync(Guid id, int change, CancellationToken cancellationToken = default)
     {
-        await using var command = dataSource.CreateCommand(
-            "UPDATE demo.product SET quantity_on_hand = quantity_on_hand + @change, updated_at = now() WHERE product_id = @id AND quantity_on_hand + @change >= 0");
+        if (!currentUser.IsAdministrator)
+        {
+            return AdministratorOnly;
+        }
+
+        await using var command = DataSource.CreateCommand(
+            "UPDATE inventory.product SET quantity_on_hand = quantity_on_hand + @change, updated_at = now() WHERE product_id = @id AND quantity_on_hand + @change >= 0");
         Add(command, "id", id);
         Add(command, "change", change);
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1 ? null : "There is not enough stock to remove that quantity.";
     }
 
-    public async Task DeleteProductAsync(Guid id, CancellationToken cancellationToken = default)
+    /// <summary>Deletes a product. Returns an error message or null.</summary>
+    public async Task<string?> DeleteProductAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        await using var command = dataSource.CreateCommand("DELETE FROM demo.product WHERE product_id = @id");
+        if (!currentUser.IsAdministrator)
+        {
+            return AdministratorOnly;
+        }
+
+        await using var command = DataSource.CreateCommand("DELETE FROM inventory.product WHERE product_id = @id");
         Add(command, "id", id);
         await command.ExecuteNonQueryAsync(cancellationToken);
+        return null;
     }
 
-    public async Task<StockReport> AddReportAsync(string type, IReadOnlyList<Product> products, object details, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Writes a report. With an <paramref name="executionId"/>, a second call for the same execution writes nothing
+    /// and returns the report already written, so a repeated run has no extra effect (WP-2).
+    /// </summary>
+    public async Task<StockReport> AddReportAsync(string type, IReadOnlyList<Product> products, object details, Guid? executionId = null,
+        CancellationToken cancellationToken = default)
     {
+        if (executionId is { } existingRun && await GetReportForExecutionAsync(existingRun, cancellationToken) is { } existing)
+        {
+            return existing;
+        }
+
         var report = new StockReport(Guid.CreateVersion7(), type, DateTime.UtcNow, products.Count, products.Count(p => p.IsLow),
             products.Sum(p => p.StockValue), JsonSerializer.Serialize(details));
-        await using var command = dataSource.CreateCommand(
-            "INSERT INTO demo.stock_report (report_id, report_type, created_at, product_count, low_stock_count, total_value, details) " +
-            "VALUES (@id, @type, @created, @count, @low, @value, CAST(@details AS jsonb))");
+        await using var command = DataSource.CreateCommand(
+            "INSERT INTO inventory.stock_report (report_id, report_type, created_at, product_count, low_stock_count, total_value, details, execution_id) " +
+            "VALUES (@id, @type, @created, @count, @low, @value, CAST(@details AS jsonb), @execution) ON CONFLICT (execution_id) DO NOTHING");
         Add(command, "id", report.Id);
         Add(command, "type", type);
         Add(command, "created", report.CreatedAtUtc);
@@ -166,14 +222,33 @@ public sealed class InventoryStore(DbDataSource dataSource)
         Add(command, "low", report.LowStockCount);
         Add(command, "value", report.TotalValue);
         Add(command, "details", report.Details);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        Add(command, "execution", (object?)executionId ?? DBNull.Value, typeof(Guid));
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0 && executionId is { } run
+            && await GetReportForExecutionAsync(run, cancellationToken) is { } concurrent)
+        {
+            return concurrent;
+        }
+
         return report;
+    }
+
+    public async Task<StockReport?> GetReportForExecutionAsync(Guid executionId, CancellationToken cancellationToken = default)
+    {
+        await using var command = DataSource.CreateCommand(
+            "SELECT report_id, report_type, created_at, product_count, low_stock_count, total_value, details::text FROM inventory.stock_report " +
+            "WHERE execution_id = @execution");
+        Add(command, "execution", executionId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new StockReport(reader.GetGuid(0), reader.GetString(1), reader.GetDateTime(2), reader.GetInt32(3), reader.GetInt32(4),
+                reader.GetDecimal(5), reader.GetString(6))
+            : null;
     }
 
     public async Task<IReadOnlyList<StockReport>> GetReportsAsync(string? type, DateTime sinceUtc, int limit, CancellationToken cancellationToken = default)
     {
-        await using var command = dataSource.CreateCommand(
-            "SELECT report_id, report_type, created_at, product_count, low_stock_count, total_value, details::text FROM demo.stock_report " +
+        await using var command = DataSource.CreateCommand(
+            "SELECT report_id, report_type, created_at, product_count, low_stock_count, total_value, details::text FROM inventory.stock_report " +
             "WHERE (@type IS NULL OR report_type = @type) AND created_at >= @since ORDER BY created_at DESC LIMIT @limit");
         Add(command, "type", (object?)type ?? DBNull.Value, typeof(string));
         Add(command, "since", sinceUtc);
@@ -197,6 +272,10 @@ public sealed class InventoryStore(DbDataSource dataSource)
         if (nullType == typeof(string))
         {
             parameter.DbType = System.Data.DbType.String;
+        }
+        else if (nullType == typeof(Guid))
+        {
+            parameter.DbType = System.Data.DbType.Guid;
         }
 
         command.Parameters.Add(parameter);

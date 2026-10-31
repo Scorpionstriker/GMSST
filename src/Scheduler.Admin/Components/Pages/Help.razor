@@ -34,7 +34,8 @@
                     <dt>Error log</dt><dd>Failed and timed-out runs with their error messages and technical details.</dd>
                     <dt>Reports</dt><dd>Five reports for a date range: summary, failures, performance, upcoming schedule and sign-ins. Export or print.</dd>
                     <dt>Configuration</dt><dd>Scheduler settings with their allowed ranges, per-task retry overrides and logging providers. Administrators only.</dd>
-                    <dt>Modules</dt><dd>The loaded modules and the task types each one provides.</dd>
+                    <dt>Modules</dt><dd>The loaded modules, starting with this administration GUI itself, and the task types each one provides. Administrators switch a module off and on
+                        with its slider, and launch and stop a module's application, such as the Maintenance Agent, with Launch and Stop.</dd>
                     <dt>Backup and restore</dt><dd>Make a backup now, see every backup with its check result, and restore one. Administrators only.</dd>
                 </dl>
                 break;
@@ -42,7 +43,30 @@
                 <h2>Statuses</h2>
                 <h3>Tasks</h3>
                 <p><StatusBadge Value="ScheduledTaskStatus.Active" /> runs on its schedule. <StatusBadge Value="ScheduledTaskStatus.Paused" /> does not run on
-                    its schedule but can be run manually. <StatusBadge Value="ScheduledTaskStatus.Disabled" /> does not run at all until it is resumed.</p>
+                    its schedule but can be run manually with <strong>Run now</strong>; that run keeps its retries. <StatusBadge Value="ScheduledTaskStatus.Disabled" />
+                    does not run at all, not even with Run now, until it is enabled.</p>
+                <table class="table">
+                    <thead><tr><th>From</th><th>Action</th><th>To</th><th>Effect on the queue and running work</th></tr></thead>
+                    <tbody>
+                        <tr><td>(new)</td><td>Create</td><td>Active</td><td>The next run is calculated.</td></tr>
+                        <tr><td>Active</td><td>Pause</td><td>Paused</td><td>No scheduled runs. Waiting runs are cancelled when a worker picks them up. A running run finishes.</td></tr>
+                        <tr><td>Paused</td><td>Resume</td><td>Active</td><td>The next run is recalculated and the misfire policy applies.</td></tr>
+                        <tr><td>Active or Paused</td><td>Disable</td><td>Disabled</td><td>Nothing runs and Run now is blocked. Waiting runs are cancelled. A running run finishes.</td></tr>
+                        <tr><td>Disabled</td><td>Enable</td><td>Active</td><td>As Resume.</td></tr>
+                        <tr><td>Any</td><td>Delete</td><td>(deleted)</td><td>Hidden from the list. Waiting runs are cancelled. The history is kept.</td></tr>
+                        <tr><td>Deleted</td><td>Restore</td><td>Previous status</td><td>As Resume.</td></tr>
+                        <tr><td>Paused</td><td>Run now</td><td>Stays Paused</td><td>One manual run is queued and executed, with its retries.</td></tr>
+                    </tbody>
+                </table>
+                <p>Only administrators can change a task's status.</p>
+                <h3>Priority and order</h3>
+                <p>Priority runs from 1 (highest) to 10 (lowest). When more runs are due than there are free workers, the run with the highest
+                    priority starts first; runs of equal priority start in order of their due time, then in the order they were queued.
+                    MaxConcurrency (1 to 16, default 4) is the number of runs that can execute at the same time.</p>
+                <h3>Runs after (dependencies)</h3>
+                <p>A task that runs after other tasks is queued once <strong>all</strong> of them have succeeded since its last dependency run.
+                    If one of them fails with no retries left, the task is not queued for that round; it waits until that task succeeds again.
+                    Only one dependency run of a task waits in the queue at a time.</p>
                 <h3>Runs</h3>
                 <p><StatusBadge Value="ExecutionStatus.Running" /> is in progress. <StatusBadge Value="ExecutionStatus.Success" /> finished.
                     <StatusBadge Value="ExecutionStatus.Retrying" /> failed and a retry is queued. <StatusBadge Value="ExecutionStatus.Failed" /> failed with no retries left.
@@ -66,7 +90,10 @@
                     </tbody>
                 </table>
                 <p><code>*</code> any value · <code>5,10</code> a list · <code>1-5</code> a range · <code>*/15</code> every 15th value.
-                    When both day fields are restricted, a day matching either one runs.</p>
+                    When both day fields are restricted, a day matching either one runs; a day field that starts with <code>*</code>
+                    (such as <code>*/2</code>) counts as unrestricted for this rule, so both fields must then match.</p>
+                <p>When the clocks go forward, a run time that does not exist that night (for example 02:30 when 02:00 becomes 03:00)
+                    runs at the first valid minute after the change. When the clocks go back, a repeated time runs once.</p>
                 <table class="table">
                     <thead><tr><th>Expression</th><th>Meaning</th></tr></thead>
                     <tbody>
@@ -105,6 +132,14 @@
                 </ol>
                 <p>To remove a module, delete its line in ModuleCatalog.cs and its project reference. Its task types, pages and menu entries disappear;
                     existing tasks of its types stay in the list but are not run on this host.</p>
+                <p>To disconnect a module for a while without removing it, switch it off on the <strong>Modules</strong> page. Its menu entries and pages
+                    are hidden, tasks of its types wait (they are not queued or run), and its application is stopped. Switching it on again reconnects
+                    it and launches its application again if it was running. Every module is on by default; the choice is saved in the user settings
+                    file. A module that the application needs, such as Login and Security, sets <span class="mono">CanBeDisabled</span> to false, and
+                    <span class="mono">OnEnabledChangedAsync</span> lets a module pause work of a built-in task type when it is switched off.</p>
+                <p>A module that manages an application registers an <span class="mono">IManagedApplication</span>; the Modules page then shows Launch and
+                    Stop buttons on its row. The Maintenance Agent connector uses it to start the separate agent program in the background, and the
+                    Inventory Monitor uses it to start and pause its scheduled tasks.</p>
                 <p>The Login and Security module is itself a module: remove it to run without sign-in, or replace <span class="mono">IAuthenticationProvider</span>
                     to sign in against another directory. The Inventory Monitor and Maintenance Agent projects are worked examples.</p>
                 break;

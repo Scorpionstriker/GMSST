@@ -20,7 +20,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Scheduler.UnitTests" />
-    <InternalsVisibleTo Include="Scheduler.IntegrationTests" />
   </ItemGroup>
 
 </Project>

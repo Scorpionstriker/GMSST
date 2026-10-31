@@ -29,7 +29,7 @@ public sealed class CronExpression
     private readonly bool[] _months;
     private readonly bool[] _weekdays;
 
-    private CronExpression(string text, bool[][] sets, bool dayIsWildcard, bool weekdayIsWildcard)
+    private CronExpression(string text, bool[][] sets, bool dayStartsWithStar, bool weekdayStartsWithStar)
     {
         Text = text;
         _minutes = sets[0];
@@ -37,15 +37,18 @@ public sealed class CronExpression
         _days = sets[2];
         _months = sets[3];
         _weekdays = sets[4];
-        DayIsWildcard = dayIsWildcard;
-        WeekdayIsWildcard = weekdayIsWildcard;
+        DayStartsWithStar = dayStartsWithStar;
+        WeekdayStartsWithStar = weekdayStartsWithStar;
     }
 
     /// <summary>The expression as entered, with single spaces between fields.</summary>
     public string Text { get; }
 
-    public bool DayIsWildcard { get; }
-    public bool WeekdayIsWildcard { get; }
+    /// <summary>The day-of-month field starts with *, for example "*" or "*/2" (WP-8g).</summary>
+    public bool DayStartsWithStar { get; }
+
+    /// <summary>The day-of-week field starts with *, for example "*" or "*/2" (WP-8g).</summary>
+    public bool WeekdayStartsWithStar { get; }
 
     /// <summary>Parses <paramref name="text"/>; throws <see cref="FormatException"/> with a specific message when it is invalid.</summary>
     public static CronExpression Parse(string text) =>
@@ -86,7 +89,7 @@ public sealed class CronExpression
             sets[4][7] = false;
         }
 
-        expression = new CronExpression(string.Join(' ', parts), sets, parts[2] == "*", parts[4] == "*");
+        expression = new CronExpression(string.Join(' ', parts), sets, parts[2].StartsWith('*'), parts[4].StartsWith('*'));
         return true;
     }
 
@@ -134,14 +137,15 @@ public sealed class CronExpression
 
             t = t.Date.AddHours(t.Hour).AddMinutes(minute);
 
-            // Skip local times that do not exist because the clocks went forward.
-            if (timeZone.IsInvalidTime(t))
+            // WP-8g: a local time that does not exist because the clocks went forward runs at the first valid minute
+            // after the gap (02:30 on a night when 02:00 becomes 03:00 runs at 03:00), so the run is not lost.
+            var wallClock = t;
+            while (timeZone.IsInvalidTime(wallClock))
             {
-                t = t.AddMinutes(1);
-                continue;
+                wallClock = wallClock.AddMinutes(1);
             }
 
-            var utc = TimeZoneInfo.ConvertTimeToUtc(t, timeZone);
+            var utc = TimeZoneInfo.ConvertTimeToUtc(wallClock, timeZone);
             if (utc <= after)
             {
                 // A repeated local hour after the clocks went back maps to an earlier instant; move on.
@@ -155,23 +159,16 @@ public sealed class CronExpression
         return null;
     }
 
-    /// <summary>Standard cron rule: when both day fields are restricted, a day matches if either matches.</summary>
+    /// <summary>
+    /// Standard cron rule: when both day fields are restricted, a day matches if either matches. A field that starts
+    /// with * (including "*/2") counts as unrestricted for this rule, so the other field and its own step both apply
+    /// (WP-8g, as in Vixie cron).
+    /// </summary>
     private bool DayMatches(DateTime t)
     {
         var dayOk = _days[t.Day];
         var weekdayOk = _weekdays[(int)t.DayOfWeek];
-
-        if (DayIsWildcard && WeekdayIsWildcard)
-        {
-            return true;
-        }
-
-        if (DayIsWildcard)
-        {
-            return weekdayOk;
-        }
-
-        return WeekdayIsWildcard ? dayOk : dayOk || weekdayOk;
+        return DayStartsWithStar || WeekdayStartsWithStar ? dayOk && weekdayOk : dayOk || weekdayOk;
     }
 
     private static int NextSet(bool[] set, int from)

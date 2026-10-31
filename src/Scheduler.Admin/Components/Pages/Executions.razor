@@ -9,14 +9,20 @@
 @inject IFileSaver Files
 @inject ToastService Toasts
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject PrintService Printer
 
 <div class="page-header">
     <h1>Execution history</h1>
-    <button class="btn" @onclick="ExportAsync" disabled="@_exporting">@(_exporting ? "Exporting…" : "Export CSV")</button>
+    <div class="actions no-print">
+        <button class="btn" @onclick="ExportAsync" disabled="@_exporting">@(_exporting ? "Exporting…" : "Export CSV")</button>
+        @* WP-8d (F-20): prints the rows shown, with the report print style. *@
+        <button class="btn" @onclick="() => Printer.PrintAsync(JS)">Print</button>
+    </div>
 </div>
 
 @* Filters run in the database (FR-58, NFR-11). Dates are in your local time. *@
-<form class="toolbar" @onsubmit="() => LoadAsync(1)">
+<form class="toolbar no-print" @onsubmit="() => LoadAsync(1)">
     <div class="field">
         <label for="task">Task</label>
         <select id="task" @bind="TaskFilter">
@@ -47,8 +53,8 @@
             }
         </select>
     </div>
-    <div class="field"><label for="from">From</label><input id="from" type="datetime-local" @bind="_from" /></div>
-    <div class="field"><label for="to">To</label><input id="to" type="datetime-local" @bind="_to" /></div>
+    <div class="field"><label for="from">From</label><DateField Id="from" @bind-Value="_from" /></div>
+    <div class="field"><label for="to">To</label><DateField Id="to" @bind-Value="_to" /></div>
     <button class="btn" type="submit">Apply</button>
 </form>
 
@@ -57,7 +63,7 @@
 @if (_detail is { } d)
 {
     var e = d.Execution;
-    <div class="card detail-panel">
+    <div class="card detail-panel no-print">
         <div class="page-header">
             <h2 style="margin:0">@e.TaskName · <StatusBadge Value="e.Status" /></h2>
             <button class="btn btn-small" @onclick="CloseDetail">Close</button>
@@ -142,7 +148,7 @@
                     }
                 </tbody>
             </table>
-            <Pager Page="page" Changed="LoadAsync" />
+            <div class="no-print"><Pager Page="page" Changed="LoadAsync" /></div>
         </div>
     }
 }
@@ -183,7 +189,7 @@
         }
     }
 
-    private ExecutionFilter Filter() => new(Display.ToUtc(_from), Display.ToUtc(_to), _task, _status, _trigger);
+    private ExecutionFilter Filter() => new(Display.ToUtc(_from), Display.ToUtc(Display.EndOfDay(_to)), _task, _status, _trigger);
 
     private async Task LoadAsync(int pageNumber)
     {

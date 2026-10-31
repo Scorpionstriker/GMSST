@@ -2,8 +2,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Scheduler.Admin.Services;
 using Scheduler.Application;
+using Scheduler.Application.Configuration;
+using Scheduler.Application.Modules;
 using Scheduler.Engine;
 using Scheduler.Infrastructure;
+using Scheduler.Infrastructure.Configuration;
 
 namespace Scheduler.Admin;
 
@@ -25,6 +28,30 @@ public static class MauiProgram
                 builder.Configuration.AddJsonStream(settings);
             }
         }
+
+        // WP-5a: the settings of this computer (folders, PostgreSQL tools, login bypass, Agent address) live in a user
+        // settings file outside the app, which wins over the embedded defaults; GSST_ environment variables win over both,
+        // for example GSST_Paths__BackupFolder. The file is created with empty values on first start.
+        var machineSettings = new MachineSettingsFile(MachineSettingsFile.DefaultPath);
+        try
+        {
+            machineSettings.EnsureExists();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The app still starts with the embedded defaults; the Configuration page shows where the file should be.
+        }
+
+        builder.Configuration
+            .AddJsonFile(machineSettings.FilePath, optional: true, reloadOnChange: true)
+            .AddEnvironmentVariables("GSST_");
+        builder.Services.AddSingleton<IMachineSettingsStore>(machineSettings);
+        builder.Services.AddSingleton<IModuleStateStore>(machineSettings);
+#if WINDOWS
+        builder.Services.AddSingleton<IFolderPicker, Scheduler.Admin.WinUI.WindowsFolderPicker>();
+#else
+        builder.Services.AddSingleton<IFolderPicker, TypedFolderPicker>();
+#endif
 
         builder.Services.AddMauiBlazorWebView();
 

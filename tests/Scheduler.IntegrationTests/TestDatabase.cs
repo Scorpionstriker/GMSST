@@ -75,6 +75,21 @@ public sealed class TestDatabase : IAsyncLifetime
         }
     }
 
+    /// <summary>Drops the database and creates it again, empty, as on a newly installed computer (WP-5j).</summary>
+    public async Task RecreateEmptyAsync()
+    {
+        NpgsqlConnection.ClearAllPools();
+        await using var admin = new NpgsqlConnection(AdminConnectionString());
+        await admin.OpenAsync();
+        await using (var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{Options.Name}\" WITH (FORCE)", admin))
+        {
+            await drop.ExecuteNonQueryAsync();
+        }
+
+        await using var create = new NpgsqlCommand($"CREATE DATABASE \"{Options.Name}\"", admin);
+        await create.ExecuteNonQueryAsync();
+    }
+
     /// <summary>A complete scheduler host (application, infrastructure and engine) with the test handlers registered.</summary>
     public ServiceProvider CreateServices(string hostName, Action<EngineOptions>? configureEngine = null, Action<IServiceCollection>? configure = null)
     {

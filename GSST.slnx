@@ -30,10 +30,10 @@
   <Folder Name="/Demo Apps/">
     <Project Path="demos/DemoApps.InventoryMonitor/DemoApps.InventoryMonitor.csproj" />
     <Project Path="demos/DemoApps.MaintenanceAgent/DemoApps.MaintenanceAgent.csproj" />
+    <Project Path="demos/DemoApps.MaintenanceAgentConnector/DemoApps.MaintenanceAgentConnector.csproj" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="tests/Scheduler.ArchitectureTests/Scheduler.ArchitectureTests.csproj" />
-    <Project Path="tests/Scheduler.IntegrationTests/Scheduler.IntegrationTests.csproj" />
     <Project Path="tests/Scheduler.UnitTests/Scheduler.UnitTests.csproj" />
   </Folder>
 </Solution>

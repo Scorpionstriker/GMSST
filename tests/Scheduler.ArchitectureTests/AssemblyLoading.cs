@@ -1,5 +1,6 @@
 using DemoApps.InventoryMonitor;
-using DemoApps.MaintenanceAgent.Handlers;
+using DemoApps.MaintenanceAgent.Services;
+using DemoApps.MaintenanceAgentConnector;
 using Scheduler.Domain.Entities;
 using Scheduler.Engine;
 using Scheduler.Extensibility.Contracts;
@@ -18,9 +19,9 @@ public class AssemblyLoading
         [
             typeof(AuditableEntity), typeof(ITaskHandler), typeof(Scheduler.Application.DependencyInjection),
             typeof(SchedulerDbContext), typeof(SchedulerEngine), typeof(SecurityModule),
-            typeof(InventoryModule), typeof(HealthCheckHandler)
+            typeof(InventoryModule), typeof(HealthChecker), typeof(MaintenanceAgentConnectorModule)
         ];
 
-        Assert.Equal(8, anchors.Select(t => t.Assembly).Distinct().Count());
+        Assert.Equal(9, anchors.Select(t => t.Assembly).Distinct().Count());
     }
 }
