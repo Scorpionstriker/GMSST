@@ -17,10 +17,10 @@ public sealed class SecurityTests(TestDatabase database) : IClassFixture<TestDat
     {
         RequiresDatabase.Check();
         var services = CreateServices();
-        await EnsureAdministratorAsync(services);
+        await EnsureDeveloperAsync(services);
         var auth = services.GetRequiredService<IAuthenticationProvider>();
         var users = services.GetRequiredService<UserManagement>();
-        await SignInAsAdministratorAsync(services);
+        await SignInAsDeveloperAsync(services);
         Assert.True((await users.CreateUserAsync("viewer1", Password, Password, UserRole.Viewer)).Succeeded);
 
         var unknown = await auth.SignInAsync("nobody", "whatever");
@@ -44,16 +44,16 @@ public sealed class SecurityTests(TestDatabase database) : IClassFixture<TestDat
     }
 
     [SkippableFact]
-    public async Task LastAdministrator_CannotBeDeactivated()
+    public async Task LastDeveloper_CannotBeDemoted()
     {
         RequiresDatabase.Check();
         var services = CreateServices();
-        await EnsureAdministratorAsync(services);
-        await SignInAsAdministratorAsync(services);
+        await EnsureDeveloperAsync(services);
+        await SignInAsDeveloperAsync(services);
         var users = services.GetRequiredService<UserManagement>();
         var self = (await users.ListAsync()).Single(u => u.Username == "admin");
 
-        Assert.False((await users.UpdateUserAsync(self.Id, UserRole.Viewer, true)).Succeeded);
+        Assert.False((await users.UpdateUserAsync(self.Id, UserRole.Administrator, true)).Succeeded);
     }
 
     [SkippableFact]
@@ -61,8 +61,8 @@ public sealed class SecurityTests(TestDatabase database) : IClassFixture<TestDat
     {
         RequiresDatabase.Check();
         var services = CreateServices();
-        await EnsureAdministratorAsync(services);
-        await SignInAsAdministratorAsync(services);
+        await EnsureDeveloperAsync(services);
+        await SignInAsDeveloperAsync(services);
         var users = services.GetRequiredService<UserManagement>();
         await users.CreateUserAsync("viewer2", Password, Password, UserRole.Viewer);
 
@@ -72,19 +72,41 @@ public sealed class SecurityTests(TestDatabase database) : IClassFixture<TestDat
         Assert.True((await users.ChangeOwnPasswordAsync(Password, "New password 77", "New password 77")).Succeeded);
     }
 
+    [SkippableFact]
+    public async Task Administrator_CanManageSchedulerUsers_ButNotDeveloperAccounts()
+    {
+        RequiresDatabase.Check();
+        var services = CreateServices();
+        await EnsureDeveloperAsync(services);
+        await SignInAsDeveloperAsync(services);
+        var users = services.GetRequiredService<UserManagement>();
+        Assert.True((await users.CreateUserAsync("admin1", Password, Password, UserRole.Administrator)).Succeeded);
+
+        Assert.True((await services.GetRequiredService<IAuthenticationProvider>().SignInAsync("admin1", Password)).Succeeded);
+        var current = services.GetRequiredService<ICurrentUser>();
+        Assert.True(current.IsAdministrator);
+        Assert.False(current.IsDeveloper);
+        Assert.True((await users.CreateUserAsync("viewer3", Password, Password, UserRole.Viewer)).Succeeded);
+        Assert.False((await users.CreateUserAsync("dev2", Password, Password, UserRole.Developer)).Succeeded);
+
+        var developer = (await users.ListAsync()).Single(u => u.Role == UserRole.Developer);
+        Assert.False((await users.UpdateUserAsync(developer.Id, UserRole.Administrator, true)).Succeeded);
+        Assert.False((await users.ResetPasswordAsync(developer.Id, "New password 77", "New password 77")).Succeeded);
+    }
+
     private ServiceProvider CreateServices() =>
         database.CreateServices("security", configure: services => new SecurityModule().Register(services));
 
-    private static async Task EnsureAdministratorAsync(IServiceProvider services)
+    private static async Task EnsureDeveloperAsync(IServiceProvider services)
     {
         var users = services.GetRequiredService<UserManagement>();
-        if (await users.NeedsFirstAdministratorAsync())
+        if (await users.NeedsFirstDeveloperAsync())
         {
-            await users.CreateFirstAdministratorAsync("admin", Password, Password);
+            await users.CreateFirstDeveloperAsync("admin", Password, Password);
         }
     }
 
-    private static async Task SignInAsAdministratorAsync(IServiceProvider services) =>
+    private static async Task SignInAsDeveloperAsync(IServiceProvider services) =>
         Assert.True((await services.GetRequiredService<IAuthenticationProvider>().SignInAsync("admin", Password)).Succeeded);
 }
 
@@ -94,25 +116,27 @@ public sealed class FirstRunTests(TestDatabase database) : IClassFixture<TestDat
     private const string Password = "Correct horse 42";
 
     [SkippableFact]
-    public async Task FirstAdministrator_CanBeCreatedOnlyOnce_AndThenSignIn()
+    public async Task FirstDeveloper_CanBeCreatedOnlyOnce_AndThenSignIn()
     {
         RequiresDatabase.Check();
         var services = CreateServices();
         var users = services.GetRequiredService<UserManagement>();
 
-        Assert.True(await users.NeedsFirstAdministratorAsync());
-        Assert.False((await users.CreateFirstAdministratorAsync("admin", "short1", "short1")).Succeeded);
-        Assert.True((await users.CreateFirstAdministratorAsync("admin", Password, Password)).Succeeded);
-        Assert.False((await users.CreateFirstAdministratorAsync("other", Password, Password)).Succeeded);
+        Assert.True(await users.NeedsFirstDeveloperAsync());
+        Assert.False((await users.CreateFirstDeveloperAsync("admin", "short1", "short1")).Succeeded);
+        Assert.True((await users.CreateFirstDeveloperAsync("admin", Password, Password)).Succeeded);
+        Assert.False((await users.CreateFirstDeveloperAsync("other", Password, Password)).Succeeded);
 
         var result = await services.GetRequiredService<IAuthenticationProvider>().SignInAsync("ADMIN", Password);
         Assert.True(result.Succeeded);
         var current = services.GetRequiredService<ICurrentUser>();
         Assert.True(current.IsAdministrator);
+        Assert.True(current.IsDeveloper);
         Assert.Equal("admin", current.Username);
 
         await using var db = database.CreateContext();
         var stored = await db.AppUsers.SingleAsync(u => u.Username == "admin");
+        Assert.Equal(UserRole.Developer, stored.Role);
         Assert.DoesNotContain(Password, stored.PasswordHash);
         Assert.StartsWith("600000.", stored.PasswordHash);
         Assert.Equal(24, stored.PasswordSalt.Length); // 128-bit salt in Base64.

@@ -19,7 +19,7 @@
         }
         else if (_firstRun == true)
         {
-            <p>Create the first administrator account. There is no default password, so this account is the only way in.</p>
+            <p>Create the first Developer account. This is the super-admin account. There is no default password, so this account is the only way in.</p>
             <form @onsubmit="CreateFirstAsync">
                 <div class="field">
                     <label for="new-username">Username</label>
@@ -41,7 +41,7 @@
                 {
                     <div class="banner banner-error" role="alert">@_result.Error</div>
                 }
-                <button class="btn btn-primary" type="submit" disabled="@_busy">Create administrator</button>
+                <button class="btn btn-primary" type="submit" disabled="@_busy">Create Developer</button>
             </form>
         }
         else
@@ -88,7 +88,7 @@
         _loadError = null;
         try
         {
-            _firstRun = await Users.NeedsFirstAdministratorAsync();
+            _firstRun = await Users.NeedsFirstDeveloperAsync();
         }
         catch (Exception)
         {
@@ -128,7 +128,7 @@
         _busy = true;
         try
         {
-            _result = await Users.CreateFirstAdministratorAsync(_username, _password, _confirmation);
+            _result = await Users.CreateFirstDeveloperAsync(_username, _password, _confirmation);
             if (_result.Succeeded)
             {
                 await Authentication.SignInAsync(_username, _password);

@@ -30,7 +30,8 @@ public sealed class UserSession : ICurrentUser, IDisposable
     /// <summary>True when the last sign-out happened because the session timed out, so the login page can say so.</summary>
     public bool ExpiredByTimeout { get; private set; }
 
-    public bool IsAdministrator => IsAuthenticated && Role == UserRole.Administrator;
+    public bool IsAdministrator => IsAuthenticated && Role is UserRole.Administrator or UserRole.Developer;
+    public bool IsDeveloper => IsAuthenticated && Role == UserRole.Developer;
 
     public event EventHandler? Changed;
 

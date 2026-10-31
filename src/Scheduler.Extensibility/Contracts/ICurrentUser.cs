@@ -14,7 +14,8 @@ public interface ICurrentUser
     string? Username { get; }
     UserRole? Role { get; }
 
-    bool IsAdministrator => IsAuthenticated && Role == UserRole.Administrator;
+    bool IsAdministrator => IsAuthenticated && Role is UserRole.Administrator or UserRole.Developer;
+    bool IsDeveloper => IsAuthenticated && Role == UserRole.Developer;
 
     /// <summary>Called on user activity, so an idle session can expire (FR-48).</summary>
     void RegisterActivity()

@@ -36,6 +36,10 @@ else
                     <select id="add-role" @bind="_role">
                         <option value="@UserRole.Viewer">Viewer (read only)</option>
                         <option value="@UserRole.Administrator">Administrator</option>
+                        @if (Session.IsDeveloper)
+                        {
+                            <option value="@UserRole.Developer">Developer (super-admin)</option>
+                        }
                     </select>
                 </div>
                 <div class="field">
@@ -67,6 +71,10 @@ else
                 <select id="edit-role" @bind="_role">
                     <option value="@UserRole.Viewer">Viewer (read only)</option>
                     <option value="@UserRole.Administrator">Administrator</option>
+                    @if (Session.IsDeveloper)
+                    {
+                        <option value="@UserRole.Developer">Developer (super-admin)</option>
+                    }
                 </select>
             </div>
             <div class="field checkbox">
@@ -130,7 +138,12 @@ else
                             }
                         </td>
                         <td>@(user.LastLoginAtUtc?.ToLocalTime().ToString("g") ?? "Never")</td>
-                        <td><button class="btn btn-small" @onclick="() => StartEdit(user)">Edit</button></td>
+                        <td>
+                            @if (Session.IsDeveloper || user.Role != UserRole.Developer)
+                            {
+                                <button class="btn btn-small" @onclick="() => StartEdit(user)">Edit</button>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>

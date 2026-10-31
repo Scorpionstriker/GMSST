@@ -87,7 +87,7 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
 
                     b.ToTable("app_user", "scheduler", t =>
                         {
-                            t.HasCheckConstraint("ck_app_user_role", "role IN ('Administrator', 'Viewer')");
+                            t.HasCheckConstraint("ck_app_user_role", "role IN ('Administrator', 'Viewer', 'Developer')");
                         });
                 });
 

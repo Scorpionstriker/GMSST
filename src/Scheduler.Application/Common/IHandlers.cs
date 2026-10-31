@@ -18,6 +18,9 @@ public interface IQueryHandler<in TQuery, TResult>
 /// </summary>
 public interface IRequireAdministrator;
 
+/// <summary>Marks a command or query that only a Developer super-admin may run.</summary>
+public interface IRequireDeveloper;
+
 /// <summary>Use cases that return no value return <see cref="Unit"/>.</summary>
 public readonly record struct Unit
 {

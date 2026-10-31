@@ -35,7 +35,7 @@
 
     private IEnumerable<IGrouping<string, ModuleMenuItem>> Groups() =>
         CoreItems.Concat(Modules.SelectMany(m => m.MenuItems.Select(i => i with { Group = i.Group ?? m.Name })))
-            .Where(i => !i.AdministratorOnly || CurrentUser.IsAdministrator)
+            .Where(i => (!i.AdministratorOnly || CurrentUser.IsAdministrator) && (!i.DeveloperOnly || CurrentUser.IsDeveloper))
             .GroupBy(i => i.Group!)
             .OrderBy(g => Array.IndexOf(GroupOrder, g.Key) is var index and >= 0 ? index : 2.5); // module groups after Monitoring
 

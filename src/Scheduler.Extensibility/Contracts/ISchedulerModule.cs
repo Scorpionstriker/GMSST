@@ -31,5 +31,11 @@ public interface ISchedulerModule
 /// <param name="Title">Menu text.</param>
 /// <param name="Route">Page route, for example "/inventory/products".</param>
 /// <param name="Group">Optional menu group, for example "Inventory".</param>
-/// <param name="AdministratorOnly">Hide the entry from Viewer users (FR-49).</param>
-public sealed record ModuleMenuItem(string Title, string Route, string? Group = null, bool AdministratorOnly = false);
+/// <param name="AdministratorOnly">Hide the entry from Viewer users.</param>
+/// <param name="DeveloperOnly">Hide the entry from users who are not Developer super-admins.</param>
+public sealed record ModuleMenuItem(
+    string Title,
+    string Route,
+    string? Group = null,
+    bool AdministratorOnly = false,
+    bool DeveloperOnly = false);

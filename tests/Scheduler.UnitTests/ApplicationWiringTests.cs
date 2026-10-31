@@ -58,6 +58,32 @@ public class ApplicationWiringTests
     }
 
     [Fact]
+    public async Task DeveloperOnlyCommands_AreRefusedForAdministrators()
+    {
+        using var provider = Build(services => services.AddSingleton<ICurrentUser>(new Administrator()));
+        var decorator = new AuthorizationCommandDecorator<DeveloperOnlyCommand, Guid>(
+            new DeveloperOnlyHandler(),
+            provider.GetRequiredService<ICurrentUser>());
+
+        var result = await decorator.HandleAsync(new DeveloperOnlyCommand());
+
+        Assert.Equal(ErrorKind.Forbidden, result.Error!.Kind);
+    }
+
+    [Fact]
+    public async Task DeveloperOnlyCommands_AreAllowedForDevelopers()
+    {
+        using var provider = Build(services => services.AddSingleton<ICurrentUser>(new Developer()));
+        var decorator = new AuthorizationCommandDecorator<DeveloperOnlyCommand, Guid>(
+            new DeveloperOnlyHandler(),
+            provider.GetRequiredService<ICurrentUser>());
+
+        var result = await decorator.HandleAsync(new DeveloperOnlyCommand());
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
     public void TwoHandlersForTheSameTaskType_FailWithAClearMessage()
     {
         using var provider = Build(services =>
@@ -84,6 +110,32 @@ public class ApplicationWiringTests
         public string? Username => "viewer";
         public UserRole? Role => UserRole.Viewer;
         public event EventHandler? Changed { add { } remove { } }
+    }
+
+    private sealed class Administrator : ICurrentUser
+    {
+        public bool IsAuthenticated => true;
+        public Guid? UserId { get; } = Guid.NewGuid();
+        public string? Username => "admin";
+        public UserRole? Role => UserRole.Administrator;
+        public event EventHandler? Changed { add { } remove { } }
+    }
+
+    private sealed class Developer : ICurrentUser
+    {
+        public bool IsAuthenticated => true;
+        public Guid? UserId { get; } = Guid.NewGuid();
+        public string? Username => "developer";
+        public UserRole? Role => UserRole.Developer;
+        public event EventHandler? Changed { add { } remove { } }
+    }
+
+    private sealed record DeveloperOnlyCommand : IRequireDeveloper;
+
+    private sealed class DeveloperOnlyHandler : ICommandHandler<DeveloperOnlyCommand, Guid>
+    {
+        public Task<Result<Guid>> HandleAsync(DeveloperOnlyCommand command, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result.Success(Guid.NewGuid()));
     }
 
     // The authorisation check must refuse before any validator or handler reaches the database.

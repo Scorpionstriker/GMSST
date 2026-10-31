@@ -98,7 +98,9 @@ Dependencies point inwards. Project references make the wrong direction hard, an
    The password is read only from this variable and is never stored in a file or in this repository (NFR-15).
 4. **Run the Admin app:** open `GSST.slnx`, set `Scheduler.Admin` as the start-up project and run it on
    "Windows Machine" (or "Mac Catalyst"). At first start it creates the tables, seeds the default settings and
-   asks you to create the first administrator account. There is no default password.
+   asks you to create the first Developer (super-admin) account. Administrators retain scheduler administration
+   access; Developers also have super-admin access to Developer accounts and Developer-only features.
+   Viewers have read-only access. There is no default password.
 5. **Optional, the Maintenance Agent:** `dotnet run --project demos/DemoApps.MaintenanceAgent`. It shares the
    same database, so its tasks appear in the Admin app and both hosts claim work without running a task twice.
 

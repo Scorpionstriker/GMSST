@@ -33,7 +33,9 @@ internal sealed class AuthorizationCommandDecorator<TCommand, TResult>(ICommandH
     : ICommandHandler<TCommand, TResult>
 {
     public Task<Result<TResult>> HandleAsync(TCommand command, CancellationToken cancellationToken = default) =>
-        command is IRequireAdministrator && !currentUser.IsAdministrator
+        command is IRequireDeveloper && !currentUser.IsDeveloper
+            ? Task.FromResult(Result.Failure<TResult>(Error.Forbidden))
+            : command is IRequireAdministrator && !currentUser.IsAdministrator
             ? Task.FromResult(Result.Failure<TResult>(Error.Forbidden))
             : inner.HandleAsync(command, cancellationToken);
 }
@@ -42,7 +44,9 @@ internal sealed class AuthorizationQueryDecorator<TQuery, TResult>(IQueryHandler
     : IQueryHandler<TQuery, TResult>
 {
     public Task<Result<TResult>> HandleAsync(TQuery query, CancellationToken cancellationToken = default) =>
-        query is IRequireAdministrator && !currentUser.IsAdministrator
+        query is IRequireDeveloper && !currentUser.IsDeveloper
+            ? Task.FromResult(Result.Failure<TResult>(Error.Forbidden))
+            : query is IRequireAdministrator && !currentUser.IsAdministrator
             ? Task.FromResult(Result.Failure<TResult>(Error.Forbidden))
             : inner.HandleAsync(query, cancellationToken);
 }

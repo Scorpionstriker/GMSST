@@ -11,26 +11,26 @@ public sealed record UserActionResult(bool Succeeded, string? Error = null, stri
 }
 
 /// <summary>
-/// First administrator, user maintenance and password changes (FR-50 to FR-52). Administrative actions require
-/// the signed-in user to be an Administrator; the last active administrator cannot be removed or demoted.
+/// First developer, user maintenance and password changes (FR-50 to FR-52). Developer accounts are super-admin
+/// accounts: only Developers can create, edit or reset a Developer account, and one active Developer must remain.
 /// </summary>
 public sealed class UserManagement(IUserAccountStore users, PasswordHasher hasher, UserSession session, TimeProvider clock)
 {
     public const int UsernameMaxLength = 50;
 
-    public async Task<bool> NeedsFirstAdministratorAsync(CancellationToken cancellationToken = default) =>
+    public async Task<bool> NeedsFirstDeveloperAsync(CancellationToken cancellationToken = default) =>
         !await users.AnyUsersAsync(cancellationToken);
 
-    /// <summary>Creates the first account at first start; refused once any account exists (FR-50).</summary>
-    public async Task<UserActionResult> CreateFirstAdministratorAsync(string username, string password, string confirmation,
+    /// <summary>Creates the first, super-admin account at first start; refused once any account exists (FR-50).</summary>
+    public async Task<UserActionResult> CreateFirstDeveloperAsync(string username, string password, string confirmation,
         CancellationToken cancellationToken = default)
     {
         if (await users.AnyUsersAsync(cancellationToken))
         {
-            return UserActionResult.Fail("An administrator already exists. Sign in instead.");
+            return UserActionResult.Fail("A user account already exists. Sign in instead.");
         }
 
-        return await CreateAsync(username, password, confirmation, UserRole.Administrator, cancellationToken);
+        return await CreateAsync(username, password, confirmation, UserRole.Developer, cancellationToken);
     }
 
     public Task<IReadOnlyList<UserAccount>> ListAsync(CancellationToken cancellationToken = default) => users.ListAsync(cancellationToken);
@@ -43,6 +43,16 @@ public sealed class UserManagement(IUserAccountStore users, PasswordHasher hashe
             return Forbidden;
         }
 
+        if (!Enum.IsDefined(role))
+        {
+            return UserActionResult.Fail("Select a valid role.", "Role");
+        }
+
+        if (role == UserRole.Developer && !session.IsDeveloper)
+        {
+            return DeveloperOnly;
+        }
+
         return await CreateAsync(username, password, confirmation, role, cancellationToken);
     }
 
@@ -53,21 +63,36 @@ public sealed class UserManagement(IUserAccountStore users, PasswordHasher hashe
             return Forbidden;
         }
 
+        if (!Enum.IsDefined(role))
+        {
+            return UserActionResult.Fail("Select a valid role.", "Role");
+        }
+
         var user = await users.FindByIdAsync(userId, cancellationToken);
         if (user is null)
         {
             return UserActionResult.Fail("The user no longer exists.");
         }
 
-        if (user.Id == session.UserId && (!isActive || role != UserRole.Administrator))
+        if (user.Role == UserRole.Developer && !session.IsDeveloper)
         {
-            return UserActionResult.Fail("You cannot deactivate your own account or remove your own administrator role.");
+            return DeveloperOnly;
         }
 
-        var removesAdministrator = user is { Role: UserRole.Administrator, IsActive: true } && (role != UserRole.Administrator || !isActive);
-        if (removesAdministrator && (await users.ListAsync(cancellationToken)).Count(u => u is { Role: UserRole.Administrator, IsActive: true }) <= 1)
+        if (role == UserRole.Developer && !session.IsDeveloper)
         {
-            return UserActionResult.Fail("At least one active administrator is required.");
+            return DeveloperOnly;
+        }
+
+        if (user.Id == session.UserId && (!isActive || role != session.Role))
+        {
+            return UserActionResult.Fail("You cannot deactivate your own account or remove your own role.");
+        }
+
+        var removesDeveloper = user is { Role: UserRole.Developer, IsActive: true } && (role != UserRole.Developer || !isActive);
+        if (removesDeveloper && (await users.ListAsync(cancellationToken)).Count(u => u is { Role: UserRole.Developer, IsActive: true }) <= 1)
+        {
+            return UserActionResult.Fail("At least one active Developer is required.");
         }
 
         user.Role = role;
@@ -93,6 +118,11 @@ public sealed class UserManagement(IUserAccountStore users, PasswordHasher hashe
         if (user is null)
         {
             return UserActionResult.Fail("The user no longer exists.");
+        }
+
+        if (user.Role == UserRole.Developer && !session.IsDeveloper)
+        {
+            return DeveloperOnly;
         }
 
         if (CheckPassword(password, confirmation, user.Username) is { } problem)
@@ -132,6 +162,7 @@ public sealed class UserManagement(IUserAccountStore users, PasswordHasher hashe
     }
 
     private static readonly UserActionResult Forbidden = UserActionResult.Fail("Only administrators can manage users.");
+    private static readonly UserActionResult DeveloperOnly = UserActionResult.Fail("Only Developers can manage Developer accounts.");
 
     private async Task<UserActionResult> CreateAsync(string username, string password, string confirmation, UserRole role,
         CancellationToken cancellationToken)
