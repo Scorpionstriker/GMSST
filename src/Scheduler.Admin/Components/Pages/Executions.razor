@@ -7,6 +7,7 @@
 @inject IQueryHandler<ExportExecutionsQuery, CsvFile> Export
 @inject IQueryHandler<GetTaskLookupsQuery, IReadOnlyList<TaskLookup>> GetLookups
 @inject IFileSaver Files
+@inject IFolderPicker FolderPicker
 @inject IAuditLog Audit
 @inject ToastService Toasts
 @inject NavigationManager Navigation
@@ -21,6 +22,18 @@
         <button class="btn" @onclick="PrintAsync">Print</button>
     </div>
 </div>
+
+<div class="toolbar no-print">
+    <div class="field" style="flex:1">
+        <label for="export-folder">CSV destination</label>
+        <input id="export-folder" @bind="_exportFolder" placeholder="@Files.DefaultFolder" />
+    </div>
+    @if (FolderPicker.IsSupported)
+    {
+        <button class="btn" @onclick="BrowseExportFolderAsync">Browse…</button>
+    }
+</div>
+<p class="hint no-print">Last exported to: <span class="mono">@(Files.LastFolder ?? "No export yet")</span></p>
 
 @* Filters run in the database (FR-58, NFR-11). Dates are in your local time. *@
 <form class="toolbar no-print" @onsubmit="() => LoadAsync(1)">
@@ -168,6 +181,7 @@
     private DateTime? _from;
     private DateTime? _to;
     private bool _exporting;
+    private string? _exportFolder;
 
     private string TaskFilter
     {
@@ -177,7 +191,16 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _exportFolder = Files.LastFolder ?? Files.DefaultFolder;
         _lookups = (await GetLookups.HandleAsync(new GetTaskLookupsQuery(IncludeDeleted: true))).Value ?? [];
+    }
+
+    private async Task BrowseExportFolderAsync()
+    {
+        if (await FolderPicker.PickFolderAsync() is { } folder)
+        {
+            _exportFolder = folder;
+        }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -233,7 +256,18 @@
                 return;
             }
 
-            var path = await Files.SaveAsync(result.Value!.FileName, result.Value.Content);
+            var path = await Files.SaveAsync(result.Value!.FileName, result.Value.Content, _exportFolder);
+            _exportFolder = Path.GetDirectoryName(path);
+            try
+            {
+                await Files.RememberLastFolderAsync(_exportFolder!);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                Toasts.Warning($"Saved to {path}, but the location could not be remembered: {ex.Message}");
+                return;
+            }
+
             await Audit.RecordAsync("ExecutionHistoryExported", $"Execution history was exported as {result.Value.FileName}.", "Scheduler Admin");
             Toasts.Success($"Saved to {path}");
         }

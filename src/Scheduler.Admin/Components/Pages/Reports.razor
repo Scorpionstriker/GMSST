@@ -4,6 +4,7 @@
 @inject IQueryHandler<GenerateReportQuery, ReportResult> Generate
 @inject IQueryHandler<GetTaskLookupsQuery, IReadOnlyList<TaskLookup>> GetLookups
 @inject IFileSaver Files
+@inject IFolderPicker FolderPicker
 @inject IAuditLog Audit
 @inject ToastService Toasts
 @inject IJSRuntime JS
@@ -19,6 +20,18 @@
         </div>
     }
 </div>
+
+<div class="toolbar no-print">
+    <div class="field" style="flex:1">
+        <label for="export-folder">CSV destination</label>
+        <input id="export-folder" @bind="_exportFolder" placeholder="@Files.DefaultFolder" />
+    </div>
+    @if (FolderPicker.IsSupported)
+    {
+        <button class="btn" @onclick="BrowseExportFolderAsync">Browse…</button>
+    }
+</div>
+<p class="hint no-print">Last exported to: <span class="mono">@(Files.LastFolder ?? "No export yet")</span></p>
 
 @* Five reports, each answering one question (FR-64), for a date range of at most a year (FR-65). *@
 <form class="toolbar no-print" @onsubmit="GenerateAsync">
@@ -143,6 +156,7 @@
     private Result? _result;
     private bool _busy;
     private (DateTime From, DateTime To) _range;
+    private string? _exportFolder;
 
     private string TaskFilter
     {
@@ -152,7 +166,16 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _exportFolder = Files.LastFolder ?? Files.DefaultFolder;
         _lookups = (await GetLookups.HandleAsync(new GetTaskLookupsQuery())).Value ?? [];
+    }
+
+    private async Task BrowseExportFolderAsync()
+    {
+        if (await FolderPicker.PickFolderAsync() is { } folder)
+        {
+            _exportFolder = folder;
+        }
     }
 
     private async Task GenerateAsync()
@@ -191,7 +214,18 @@
         var csv = _report!.ToCsv(_dates.From, _dates.To);
         try
         {
-            var path = await Files.SaveAsync(csv.FileName, csv.Content);
+            var path = await Files.SaveAsync(csv.FileName, csv.Content, _exportFolder);
+            _exportFolder = Path.GetDirectoryName(path);
+            try
+            {
+                await Files.RememberLastFolderAsync(_exportFolder!);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                Toasts.Warning($"Saved to {path}, but the location could not be remembered: {ex.Message}");
+                return;
+            }
+
             await Audit.RecordAsync("ReportExported", $"{_report!.Title} exported as {csv.FileName}.", "Scheduler Admin");
             Toasts.Success("Saved to " + path);
         }

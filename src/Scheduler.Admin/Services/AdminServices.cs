@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Scheduler.Application.Configuration;
 
 namespace Scheduler.Admin.Services;
 
@@ -11,7 +12,7 @@ public static class AdminServices
         services.AddSingleton<ToastService>();
         services.AddSingleton<IPreferenceStore>(_ => new FilePreferenceStore());
         services.AddSingleton<ThemeService>();
-        services.AddSingleton<IFileSaver>(_ => new DocumentsFileSaver());
+        services.AddSingleton<IFileSaver>(sp => new DocumentsFileSaver(sp.GetRequiredService<IMachineSettingsStore>()));
         services.AddSingleton<PrintService>();
         return services;
     }

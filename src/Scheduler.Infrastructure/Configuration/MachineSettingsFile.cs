@@ -46,6 +46,9 @@ public sealed class MachineSettingsFile(string filePath) : IMachineSettingsStore
             BackupFolder = Text(root, "Paths", "BackupFolder"),
             BackupCopyFolder = Text(root, "Paths", "BackupCopyFolder"),
             LogFolder = Text(root, "Paths", "LogFolder"),
+            ExportFolder = Text(root, "Paths", "ExportFolder"),
+            LastExportFolder = Text(root, "History", "LastExportFolder"),
+            LastBackupFolder = Text(root, "History", "LastBackupFolder"),
             AllowLoginBypass = root["Security"]?["AllowLoginBypass"] is JsonValue bypass && bypass.TryGetValue<bool>(out var on) && on,
             MaintenanceAgentUrl = Text(root, "MaintenanceAgent", "Url")
         };
@@ -106,6 +109,9 @@ public sealed class MachineSettingsFile(string filePath) : IMachineSettingsStore
         Section(root, "Paths")["BackupFolder"] = settings.BackupFolder;
         Section(root, "Paths")["BackupCopyFolder"] = settings.BackupCopyFolder;
         Section(root, "Paths")["LogFolder"] = settings.LogFolder;
+        Section(root, "Paths")["ExportFolder"] = settings.ExportFolder;
+        Section(root, "History")["LastExportFolder"] = settings.LastExportFolder;
+        Section(root, "History")["LastBackupFolder"] = settings.LastBackupFolder;
         Section(root, "Security")["AllowLoginBypass"] = settings.AllowLoginBypass;
         Section(root, "MaintenanceAgent")["Url"] = settings.MaintenanceAgentUrl;
         return root.ToJsonString(WriteOptions);

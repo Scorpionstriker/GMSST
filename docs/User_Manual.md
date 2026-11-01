@@ -153,8 +153,13 @@ The built-in **Database Backup** task backs up all three databases every night a
 - **Logging providers**: switch Database, File, Console and module providers on or off and set the minimum level.
 - **Health monitoring**: set the check interval and thresholds for repeated failures, timeouts, queue backlog, scheduler CPU and memory. Alerts are written to the scheduler log and delivered in-app to active Administrators and Developers; monitoring never pauses scheduling.
 - **This computer**: folders for backups, the backup copy and logs, the PostgreSQL tools folder and the Maintenance
-  Agent address. Only a Developer super-admin can see and change the developer login bypass. These are saved in the
-  user settings file on this computer.
+  Agent address, and the default CSV export folder. Leave the export folder empty to use Documents/GMSS Exports.
+  Only a Developer super-admin can see and change the developer login bypass. These are saved in the user settings
+  file on this computer.
+
+Report and execution-history CSV pages let you choose a destination folder for each export and show the last folder
+used. The chosen folder is remembered for the next export. The Backup and restore page similarly recalls and displays
+the last folder used for a backup or restore; its current folder field can be changed or browsed.
 
 ## 11. Modules
 

@@ -17,6 +17,9 @@ public sealed record MachineSettings
     public string BackupFolder { get; init; } = "";
     public string BackupCopyFolder { get; init; } = "";
     public string LogFolder { get; init; } = "";
+    public string ExportFolder { get; init; } = "";
+    public string LastExportFolder { get; init; } = "";
+    public string LastBackupFolder { get; init; } = "";
     public bool AllowLoginBypass { get; init; }
     public string MaintenanceAgentUrl { get; init; } = "";
 }
@@ -63,6 +66,7 @@ internal sealed class UpdateMachineSettingsValidator : IValidator<UpdateMachineS
             .AddIf(!IsEmptyOrFullPath(s.BackupFolder), nameof(s.BackupFolder), "Enter a full folder path, or leave it empty for the default folder.")
             .AddIf(!IsEmptyOrFullPath(s.BackupCopyFolder), nameof(s.BackupCopyFolder), "Enter a full folder path, or leave it empty to make no copies.")
             .AddIf(!IsEmptyOrFullPath(s.LogFolder), nameof(s.LogFolder), "Enter a full folder path, or leave it empty for the default folder.")
+            .AddIf(!IsEmptyOrFullPath(s.ExportFolder), nameof(s.ExportFolder), "Enter a full folder path, or leave it empty for the default export folder.")
             .AddIf(!IsEmptyOrLoopbackUrl(s.MaintenanceAgentUrl), nameof(s.MaintenanceAgentUrl),
                 "Enter an address on this computer, for example http://127.0.0.1:5087, or leave it empty for the default.");
         return Task.FromResult(errors.Errors);
@@ -90,6 +94,9 @@ internal sealed class UpdateMachineSettingsHandler(IMachineSettingsStore store, 
             BackupFolder = command.Settings.BackupFolder.Trim(),
             BackupCopyFolder = command.Settings.BackupCopyFolder.Trim(),
             LogFolder = command.Settings.LogFolder.Trim(),
+            ExportFolder = command.Settings.ExportFolder.Trim(),
+            LastExportFolder = before.LastExportFolder,
+            LastBackupFolder = before.LastBackupFolder,
             MaintenanceAgentUrl = command.Settings.MaintenanceAgentUrl.Trim()
         };
 

@@ -16,11 +16,22 @@ public sealed class MachineSettingsTests : IDisposable
         Assert.Equal(new MachineSettings(), file.Get());
 
         await File.WriteAllTextAsync(file.FilePath, """{ "Custom": { "Keep": "me" }, "Paths": { "BackupFolder": "D:\\Old" } }""");
-        await file.SaveAsync(new MachineSettings { BackupFolder = "E:\\Backups", BackupCopyFolder = "F:\\Copies", AllowLoginBypass = true });
+        await file.SaveAsync(new MachineSettings
+        {
+            BackupFolder = "E:\\Backups",
+            BackupCopyFolder = "F:\\Copies",
+            ExportFolder = "G:\\Exports",
+            LastExportFolder = "H:\\PreviousExports",
+            LastBackupFolder = "I:\\PreviousBackups",
+            AllowLoginBypass = true
+        });
 
         var read = file.Get();
         Assert.Equal("E:\\Backups", read.BackupFolder);
         Assert.Equal("F:\\Copies", read.BackupCopyFolder);
+        Assert.Equal("G:\\Exports", read.ExportFolder);
+        Assert.Equal("H:\\PreviousExports", read.LastExportFolder);
+        Assert.Equal("I:\\PreviousBackups", read.LastBackupFolder);
         Assert.True(read.AllowLoginBypass);
         Assert.Contains("\"Keep\": \"me\"", await File.ReadAllTextAsync(file.FilePath));
     }

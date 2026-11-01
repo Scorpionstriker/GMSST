@@ -72,6 +72,19 @@
         </div>
 
         <div class="field">
+            <label for="export-folder">Default CSV export folder</label>
+            <div class="toolbar">
+                <input id="export-folder" @bind="_form.ExportFolder" placeholder="@DocumentsFileSaver.DefaultExportFolder" style="flex:1" />
+                @if (FolderPicker.IsSupported)
+                {
+                    <button class="btn" @onclick="() => BrowseAsync(f => _form.ExportFolder = f)">Browse…</button>
+                }
+            </div>
+            <span class="hint">Used for report and execution-history CSV files unless you choose another folder when exporting. Leave empty for the Documents export folder.</span>
+            <FieldError Result="_saved" Field="ExportFolder" />
+        </div>
+
+        <div class="field">
             <label for="agent-url">Maintenance Agent address</label>
             <input id="agent-url" @bind="_form.MaintenanceAgentUrl" placeholder="http://127.0.0.1:5087" />
             <span class="hint">Applies after the Admin application restarts. If you change the port, also change the URLs of the two Maintenance tasks.</span>
@@ -152,6 +165,7 @@
         public string BackupFolder { get; set; } = "";
         public string BackupCopyFolder { get; set; } = "";
         public string LogFolder { get; set; } = "";
+        public string ExportFolder { get; set; } = "";
         public string MaintenanceAgentUrl { get; set; } = "";
         public bool AllowLoginBypass { get; set; }
 
@@ -161,6 +175,7 @@
             BackupFolder = s.BackupFolder,
             BackupCopyFolder = s.BackupCopyFolder,
             LogFolder = s.LogFolder,
+            ExportFolder = s.ExportFolder,
             MaintenanceAgentUrl = s.MaintenanceAgentUrl,
             AllowLoginBypass = s.AllowLoginBypass
         };
@@ -171,6 +186,7 @@
             BackupFolder = BackupFolder ?? "",
             BackupCopyFolder = BackupCopyFolder ?? "",
             LogFolder = LogFolder ?? "",
+            ExportFolder = ExportFolder ?? "",
             MaintenanceAgentUrl = MaintenanceAgentUrl ?? "",
             AllowLoginBypass = AllowLoginBypass
         };

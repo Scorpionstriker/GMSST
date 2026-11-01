@@ -1,9 +1,11 @@
 @page "/backup"
 @using Scheduler.Application.Backup
+@using Scheduler.Application.Configuration
 @inject IQueryHandler<GetBackupsQuery, BackupOverview> GetBackups
 @inject ICommandHandler<CreateBackupCommand, BackupSetInfo> CreateBackup
 @inject ICommandHandler<RestoreBackupCommand, RestoreResult> RestoreBackup
 @inject IFolderPicker FolderPicker
+@inject IMachineSettingsStore MachineSettings
 @inject ToastService Toasts
 @inject NavigationManager Navigation
 
@@ -23,6 +25,10 @@
         The Database Backup task makes a set of all databases every night at 01:00. The newest @o.RetentionCount sets are kept;
         safety sets made before a restore or an upgrade are kept for seven days.
     </p>
+    @if (_lastBackupFolder is { Length: > 0 } lastFolder)
+    {
+        <p class="hint">Last backup or restore location: <span class="mono">@lastFolder</span></p>
+    }
 
     @if (!o.Tools.Found)
     {
@@ -150,12 +156,15 @@ else if (_failed is null)
     private Result? _failed;
     private string? _busy;
     private string? _folder;
+    private string? _lastBackupFolder;
     private HashSet<string> _selected = [];
     private BackupSetInfo? _restoring;
     private HashSet<string> _restoreSelected = [];
 
     protected override async Task OnInitializedAsync()
     {
+        _lastBackupFolder = MachineSettings.Get().LastBackupFolder;
+        _folder = _lastBackupFolder;
         await LoadAsync();
         _selected = [.. _overview?.KnownDatabases ?? []];
     }
@@ -204,6 +213,11 @@ else if (_failed is null)
         {
             var databases = _overview!.KnownDatabases.Where(_selected.Contains).ToList();
             var result = await CreateBackup.HandleAsync(new CreateBackupCommand(databases, Folder));
+            if (result.Value is { } completed)
+            {
+                await RememberBackupFolderAsync(completed.Folder);
+            }
+
             if (result.IsFailure)
             {
                 Toasts.Error(result.Error!.Message);
@@ -260,6 +274,7 @@ else if (_failed is null)
             }
 
             var restored = result.Value!;
+            await RememberBackupFolderAsync(set.Folder);
             Toasts.Success($"Restored {string.Join(", ", restored.Restored)} from {set.SetName}. " +
                            (restored.EngineResumed ? "The engine has resumed." : "The engine was not running before, so it stays paused or stopped."));
             if (restored.SignedOut)
@@ -273,6 +288,21 @@ else if (_failed is null)
         finally
         {
             _busy = null;
+        }
+    }
+
+    private async Task RememberBackupFolderAsync(string folder)
+    {
+        try
+        {
+            var fullPath = Path.GetFullPath(folder);
+            await MachineSettings.SaveAsync(MachineSettings.Get() with { LastBackupFolder = fullPath });
+            _lastBackupFolder = fullPath;
+            _folder = fullPath;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Toasts.Warning($"The operation succeeded, but its location could not be remembered: {ex.Message}");
         }
     }
 }
