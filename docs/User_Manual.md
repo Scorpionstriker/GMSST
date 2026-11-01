@@ -5,7 +5,7 @@ covers one page of the menu. Screenshots are marked as placeholders and are adde
 
 ## 1. Signing in and roles
 
-When the app starts for the first time it asks you to **create the first administrator** (username, password and
+When the app starts for the first time it asks you to **create the first Developer super-admin** (username, password and
 confirmation). After that, sign in with your username and password. After `MaxFailedLogins` wrong passwords in a row
 (default 5) the account is locked for `LockoutMinutes` (default 15); the message is always "Invalid username or
 password." so nobody can tell whether an account exists. You are signed out after `SessionTimeoutMinutes` without
@@ -145,7 +145,7 @@ The built-in **Database Backup** task backs up all three databases every night a
 
 > Screenshot placeholder: backup page.
 
-## 10. Configuration (administrators)
+## 11. Configuration (administrators and Developers)
 
 - **Scheduler settings**: each setting with its value, default and allowed range. **Change**, enter a value,
   **Save**. Values outside the range are refused with a message.
@@ -161,7 +161,7 @@ Report and execution-history CSV pages let you choose a destination folder for e
 used. The chosen folder is remembered for the next export. The Backup and restore page similarly recalls and displays
 the last folder used for a backup or restore; its current folder field can be changed or browsed.
 
-## 11. Modules
+## 12. Modules
 
 Lists the loaded modules with their description and the pages they add, and every task type with the module that
 provides it. The first module is the Scheduler Admin GUI, the administration application itself, which provides the
@@ -178,7 +178,7 @@ Admin application is stopped when the Admin application closes.
 If the Maintenance Agent is running when the Scheduler closes, the Scheduler asks before stopping it. Cancel leaves
 both applications running; **Stop Agent and Close** shuts down the agent before closing the Scheduler.
 
-## 12. Notifications
+## 13. Notifications
 
 The **Notifications** page shows delivered in-app messages for the signed-in account. Select **Mark read** to clear a
 new message. Integrated modules can create immediate or one-time scheduled notifications and cancel their own future
@@ -186,12 +186,13 @@ notifications. There are no email or operating-system notifications. Pending reg
 Administrators and Developers; successful password changes notify the account owner and all active Administrators
 and Developers.
 
-## 13. Help
+## 14. Help
 
 Getting started, cron syntax with examples, the task state table, priority and dependency rules, and what each
-status means.
+status means. **Developer Support** explains the execution flow and links to the system, module and core-development
+guides and the layer README files.
 
-## 14. Inventory pages (demo app 1)
+## 15. Inventory pages (demo app 1)
 
 | Page | Use |
 |---|---|
@@ -201,7 +202,7 @@ status means.
 
 Changes need the Administrator role.
 
-## 15. Maintenance Agent page (demo app 2)
+## 16. Maintenance Agent page (demo app 2)
 
 **Managed apps > Maintenance Agent** shows whether the separate Maintenance Agent application is running, since
 when, its database, the last health check and the last clean-up. The health check tests the Scheduler and Inventory
@@ -211,7 +212,7 @@ task. If the agent is not running, the page says so and offers **Launch Maintena
 **Stop Maintenance Agent** stops it. If the agent is not running, the health-check task fails with a clear message in
 the Error log.
 
-## 15. Users (administrators)
+## 17. Users (administrators and Developers)
 
 Add users (**Add user**: username, role, password and confirmation), **Edit** a user's role, **Reset password**,
 **Deactivate** or reactivate an account, and see locked accounts with "Locked until …". Every change is recorded in
@@ -221,7 +222,7 @@ Accounts registered on the sign-in page show **Waiting for approval**. Select **
 to let the person sign in; change the role to Administrator first if they need it. When you add a user, the page
 shows their recovery code once: give it to them with their password.
 
-## 16. Account
+## 18. Account
 
 Change your username after entering the current password. Usernames must be unique, 1–50 characters, and contain no
 spaces. The change is recorded in the Security and audit report and takes effect immediately in your signed-in session.
@@ -230,7 +231,7 @@ To change your password, enter the current password and the new one twice. Passw
 Under **Recovery code**, enter your current password and select **Create a new recovery code** to get a new code for
 "Forgot password?". Accounts that existed before recovery codes were added have none until you create one here.
 
-## 17. Common tasks
+## 19. Common tasks
 
 | I want to … | Do this |
 |---|---|

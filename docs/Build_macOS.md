@@ -64,7 +64,7 @@ dotnet build src/Scheduler.Admin -f net10.0-maccatalyst
 dotnet build -t:Run src/Scheduler.Admin -f net10.0-maccatalyst
 ```
 
-At first start the app creates the tables and asks for the first administrator, as on Windows. If backups report
+At first start the app creates the tables and asks for the first Developer super-admin, as on Windows. If backups report
 that `pg_dump` was not found, set **Configuration > This computer > PostgreSQL tools folder** to the folder above.
 The user settings file is `~/Library/Application Support/GSST/appsettings.user.json`; backups and logs default to
 `~/Library/Application Support/GMSS/Backups` and `.../Logs`.

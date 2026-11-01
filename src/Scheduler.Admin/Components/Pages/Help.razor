@@ -19,7 +19,7 @@
                     <li>Open <a href="tasks">Tasks</a> and select <strong>New task</strong>.</li>
                     <li>Give the task a unique name and choose a <strong>task type</strong>. The type decides what the task does; modules add more types.</li>
                     <li>Choose when it runs: on a cron schedule, every interval, or once. The <strong>Next runs</strong> list shows the next five times before you save.</li>
-                    <li>Optionally fill in the payload (settings for the task type; use the example link), priority, retries and time-out.</li>
+                    <li>Optionally fill in the payload (settings for the task type; use the example link), priority, retries, time-out and maximum executions.</li>
                     <li>Save. The engine picks the task up straight away. Use <strong>Run now</strong> to test it, then check <a href="executions">Execution history</a>.</li>
                 </ol>
                 <p>Fields marked with a red star are required. If a value is not accepted, the reason is shown beneath the field.</p>
@@ -107,7 +107,7 @@
                         <tr><td class="mono">0 18 * * FRI</td><td>Fridays at 18:00</td></tr>
                     </tbody>
                 </table>
-                <p>When the clocks change, a time that does not exist that day is skipped, and a time that happens twice runs once. Use UTC for tasks that must run at exact intervals.</p>
+                <p>Use UTC for tasks that must run at exact intervals rather than at local wall-clock times.</p>
                 break;
             case "missed":
                 <h2>Missed runs</h2>
@@ -123,7 +123,7 @@
                 <h2>Extending the scheduler</h2>
                 <p>New behaviour is added as a <strong>module</strong>, without changing the core projects.</p>
                 <ol>
-                    <li>Create a class library that references <span class="mono">Scheduler.Extensibility</span> only.</li>
+                    <li>Create a class library that references <span class="mono">Scheduler.Extensibility</span> and only the extra libraries it needs.</li>
                     <li>Write a task handler: a class implementing <span class="mono">ITaskHandler</span> with a unique <span class="mono">TaskType</span>
                         (for example <span class="mono">MyCompany.SendReport</span>), a display name, an optional payload example, and
                         <span class="mono">ExecuteAsync</span>, which returns a <span class="mono">TaskResult</span>. Use the cancellation token for time-outs.</li>
@@ -144,6 +144,45 @@
                     Inventory Monitor uses it to start and pause its scheduled tasks.</p>
                 <p>The Login and Security module is itself a module: remove it to run without sign-in, or replace <span class="mono">IAuthenticationProvider</span>
                     to sign in against another directory. The Inventory Monitor and Maintenance Agent projects are worked examples.</p>
+                <p>Modules can call <span class="mono">TriggerEventAsync</span> to queue an event-driven task by stable system key.
+                    The event payload is separate from task configuration and is preserved on retries. Use
+                    <span class="mono">ISchedulerNotifications</span> for recipient-specific in-app notices and
+                    <span class="mono">IAuditLog</span> to attribute module actions.</p>
+                break;
+            case "developer":
+                <h2>Developer Support</h2>
+                <p>GSST is a modular monolith. The Admin application composes the scheduler core and modules; the engine does not reference demo applications.
+                    Use the extensibility contracts for application-specific behavior. Change core projects only for behavior that should apply to every module or host.</p>
+                <h3>How work runs</h3>
+                <ol>
+                    <li>The Admin host registers modules from <span class="mono">ModuleCatalog.cs</span>, initializes storage/tasks, and starts the single engine protected by a database lock.</li>
+                    <li>The engine enqueues due work, claims queue entries, and runs an <span class="mono">ITaskHandler</span> on a bounded worker pool.</li>
+                    <li>Results, retries, errors and logs are persisted. Delivery is at-least-once, so handlers should be safe to repeat and honor cancellation.</li>
+                </ol>
+                <h3>Extension contracts</h3>
+                <p><span class="mono">ISchedulerModule</span> adds services, handlers and pages. <span class="mono">ISchedulerClient</span> manages stable-key tasks and event-triggered runs.
+                    <span class="mono">IAuditLog</span> records attributed user actions; <span class="mono">ISchedulerNotifications</span> manages in-app notices.
+                    Keep module data and business rules in the module, not in the scheduler core.</p>
+                <h3>Documentation</h3>
+                <ul>
+                    <li><a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/docs/How_It_Works.md" target="_blank" rel="noopener noreferrer">How the system works</a></li>
+                    <li><a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/docs/Module_Development.md" target="_blank" rel="noopener noreferrer">Module and integration development</a></li>
+                    <li><a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/docs/Core_Development.md" target="_blank" rel="noopener noreferrer">Core development and platform adaptation</a></li>
+                    <li><a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/docs/Technical_Guide.md" target="_blank" rel="noopener noreferrer">Detailed technical guide</a></li>
+                    <li><a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/docs/Installation_Guide.md" target="_blank" rel="noopener noreferrer">Installation and local configuration</a> ·
+                        <a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/docs/User_Manual.md" target="_blank" rel="noopener noreferrer">User manual</a></li>
+                    <li><a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/README.md" target="_blank" rel="noopener noreferrer">Repository README</a> ·
+                        <a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/docs/README.md" target="_blank" rel="noopener noreferrer">Documentation index</a></li>
+                    <li><a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/EL_ReadmeFile.md" target="_blank" rel="noopener noreferrer">Extensibility Layer README</a> ·
+                        <a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/CSEL_ReadmeFile.md" target="_blank" rel="noopener noreferrer">Core Engine README</a></li>
+                    <li><a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/DL_ReadmeFile.md" target="_blank" rel="noopener noreferrer">Data Layer README</a> ·
+                        <a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/GSST_UIL_ReadmeFile.md" target="_blank" rel="noopener noreferrer">Admin UI README</a></li>
+                    <li><a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/database/README.md" target="_blank" rel="noopener noreferrer">Database README</a> ·
+                        <a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/database/seed/README.md" target="_blank" rel="noopener noreferrer">Seed settings README</a> ·
+                        <a href="https://github.com/Scorpionstriker/GSST/blob/Secondary_Pawn_Branch1/demos/DemoApps.InventoryMonitor/Data/README.md" target="_blank" rel="noopener noreferrer">Inventory data README</a></li>
+                </ul>
+                <p>The Admin desktop app targets Windows and macOS. Core libraries and the Maintenance Agent can also be built on Linux.
+                    The scheduler APIs are in-process contracts, not a network API; expose them through a separately secured adapter when needed.</p>
                 break;
         }
     </div>
@@ -157,7 +196,8 @@
         ("status", "Statuses and retries"),
         ("cron", "Cron expressions"),
         ("missed", "Missed runs"),
-        ("extend", "Extending the scheduler")
+        ("extend", "Extending the scheduler"),
+        ("developer", "Developer Support")
     ];
 
     private string _topic = "start";

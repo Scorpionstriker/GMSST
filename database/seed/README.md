@@ -20,9 +20,15 @@ missing, with its default value. Values an administrator has changed are never o
 | RunAllMisfireCap | 10 runs | 1–1000 |
 | ShutdownGraceSeconds | 30 s | 0–600 |
 | WorkerStaleSeconds | 120 s | 30–3600 |
+| HealthCheckIntervalSeconds | 60 s | 10–3600 |
+| HealthFailureThreshold | 3 failures | 2–100 |
+| HealthTimeoutThreshold | 2 timeouts | 1–100 |
+| HealthQueueBacklogThreshold | 100 waiting entries | 1–1,000,000 |
+| HealthCpuPercentThreshold | 80% | 1–100 |
+| HealthMemoryMegabytesThreshold | 1024 MB | 128–1,048,576 |
 
 Logging providers: Database and File are enabled from level Info; Console is present but disabled.
 
 Built-in tasks (Admin application only): Database Backup daily at 01:00 and Log Clean-up daily at 02:00, local time.
 
-No user is seeded: the first administrator is created on the first-run screen (FR-50).
+No user is seeded: the first-run flow creates the Developer super-admin. No password is seeded.

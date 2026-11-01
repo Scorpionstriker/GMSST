@@ -1,19 +1,39 @@
-# Extensibility Layer
+# Extensibility Layer README
 
 Projects: `Scheduler.Extensibility`, `Scheduler.Modules.Security`.
 
-`Scheduler.Extensibility` contains the stable contracts developers build against: `ITaskHandler`,
-`ITaskContext`, `TaskResult`, `ISchedulerModule`, `ISchedulerClient`, `ILoggingProvider`,
-`IAuthenticationProvider`, `IAuditLog`, `IModuleDatabases`, `IRestoreGuard`, `IManagedApplication` (Launch and
-Stop on the Modules page) and the scheduler events. A module can be switched off and on at run time on the Modules
-page (`ISchedulerModule.CanBeDisabled`, `OnEnabledChangedAsync`); every module is on by default.
-Modules reference only this project. The Admin GUI itself is listed as the first module (`src/Scheduler.Admin/AdminGuiModule.cs`):
-it provides the core pages and menu entries and cannot be switched off.
+`Scheduler.Extensibility` contains the public contracts used to add behavior without making modules depend on
+scheduler implementations:
 
-`Scheduler.Modules.Security` is the Login and Security module, built as an example of a module. It can
-be removed by deleting its line in `src/Scheduler.Admin/ModuleCatalog.cs` and its project reference. Without
-it the Admin application stays closed unless the developer setting `Security:AllowLoginBypass` is on.
+- `ITaskHandler`, `ITaskContext` and `TaskResult` define task types. Handlers receive the configured payload,
+  cancellation token, execution ID, retry number, and (for event-triggered runs) separate event name, source and data.
+- `ISchedulerModule` registers handlers and services and contributes pages and menu entries. `CanBeDisabled` and
+  `OnEnabledChangedAsync` control runtime module switches.
+- `ISchedulerClient` creates/looks up tasks by stable system key, runs or changes their active state, and queues
+  event-triggered runs. Event-to-task mappings remain owned by the module.
+- `ISchedulerNotifications` creates immediate or one-time scheduled, recipient-specific in-app notifications,
+  manages a module's pending notices and reads the signed-in user's inbox.
+- `IAuditLog` records user and module actions to the scheduler's audit log, with application attribution.
+- `ILoggingProvider`, `IAuthenticationProvider`, `IUserAccountStore`, `IModuleDatabases`, `IRestoreGuard`,
+  `IManagedApplication` and scheduler events provide logging, authentication, data, restore, managed-process and
+  lifecycle integration points.
+
+The Admin GUI itself is listed as the first module (`src/Scheduler.Admin/AdminGuiModule.cs`): it provides core
+pages and menu entries and cannot be switched off. The Admin host composes modules listed in `ModuleCatalog.cs`.
+The contracts are in-process APIs, not a network protocol; an adopting application can expose selected operations
+over its own API and authentication boundary.
+
+`Scheduler.Modules.Security` is the Login and Security module. It provides the Developer super-admin,
+Administrator and Viewer roles; account registration and approval; password and username changes; lockout; and
+one-time recovery codes. Developer-only login bypass is a local development feature. To remove or replace this
+module, update `src/Scheduler.Admin/ModuleCatalog.cs` and its project reference, then supply the intended
+authentication configuration. Consult [Core_Development.md](docs/Core_Development.md) before changing host
+security behavior.
 
 The demo module `demos/DemoApps.InventoryMonitor` (own database `inventory_demo`) and the connector
-`demos/DemoApps.MaintenanceAgentConnector` use the same contracts. The Maintenance Agent itself
-(`demos/DemoApps.MaintenanceAgent`) is a separate program that the scheduler calls over the loopback address.
+`demos/DemoApps.MaintenanceAgentConnector` use the same contracts. Inventory product and stock changes are audit
+events; its scheduled report/low-stock handlers are separate task executions. The Maintenance Agent itself
+(`demos/DemoApps.MaintenanceAgent`) is a separate program called through a loopback-only HTTP handler.
+
+See [How_It_Works.md](docs/How_It_Works.md) for runtime flow and
+[Module_Development.md](docs/Module_Development.md) for step-by-step extension guidance.

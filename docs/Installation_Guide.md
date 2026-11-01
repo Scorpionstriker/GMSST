@@ -84,7 +84,7 @@ again at any time: it creates only what is missing. `-NewAgentKey` replaces the 
 3. At first start the app creates the tables in `gmss` (migrations), seeds the default settings and logging
    providers, creates the built-in tasks (Database Backup at 01:00 and Log Clean-up at 02:00, local time) and the
    demo tasks, and creates the Inventory tables and sample products in `inventory_demo`.
-4. The sign-in screen asks you to **create the first administrator**. There is no default account or password.
+4. The sign-in screen asks you to **create the first Developer super-admin**. There is no default account or password.
 
 Only one scheduling engine runs per database. If a second copy of the Admin app is started against the same
 database, its engine stays stopped and a banner names the computer whose engine is running.
@@ -125,6 +125,9 @@ The file is created at first start. An administrator edits it on **Configuration
 | `Paths:BackupFolder` | `C:\GMSS\Backups` | Where backup sets are written |
 | `Paths:BackupCopyFolder` | off | A second folder, for example on an external drive, that every verified backup set is copied to |
 | `Paths:LogFolder` | `C:\GMSS\Logs` | Folder of the daily JSON-lines log files |
+| `Paths:ExportFolder` | Documents/GMSS Exports | Default destination for report and execution-history CSV files; each export can choose another folder |
+| `History:LastExportFolder` | none | Last folder used to export a CSV, remembered for convenience |
+| `History:LastBackupFolder` | none | Last folder used to create or restore a backup set, remembered for convenience |
 | `Security:AllowLoginBypass` | `false` | Developer login bypass, see section 8 |
 | `MaintenanceAgent:Url` | `http://127.0.0.1:5087` | Address of the Maintenance Agent |
 

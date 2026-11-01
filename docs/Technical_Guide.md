@@ -26,12 +26,12 @@ GSST is a layered, modular monolith that runs on one computer (NFR-07, NFR-09). 
 when any layer other than Infrastructure uses EF Core or Npgsql (FR-77). Positive-control tests prove the rules
 really detect a dependency, so they cannot pass by accident.
 
-Inside a layer the code is organised by feature (`Tasks/`, `Queue/`, `Reports/`, `Backup/` …). Each use case is
-a command or query record with one handler, found by assembly scanning and wrapped in decorators for validation,
+Inside a layer the code is organised by feature (`Tasks/`, `Queue/`, `Reports/`, `Logging/`, `Backup/` …). Each use
+case is a command or query record with one handler, found by assembly scanning and wrapped in decorators for validation,
 the Administrator role check (`IRequireAdministrator`) and logging. User-initiated module actions and security events
 use `IAuditLog`; entries can identify their originating application or module, go to the scheduler's Security source,
-and appear in the Security and audit report. Handlers return `Result` or `Result<T>` with an
-error kind (Validation, NotFound, Forbidden, Conflict, Failure) and per-field messages instead of throwing.
+and appear in direct Log History browsing as well as the Security and audit report. Handlers return `Result` or
+`Result<T>` with an error kind (Validation, NotFound, Forbidden, Conflict, Failure) and per-field messages instead of throwing.
 
 ## 2. One engine per database
 
@@ -117,8 +117,9 @@ task's manual run and its retries go ahead. `app_user`, `configuration` and `log
 records a start. Event metadata is stored on the queue entry, separate from the task's configured JSON payload.
 `in_app_notification` stores recipient-specific messages and one-time delivery times.
 
-The full schema as SQL is in `database/schema.sql` (generated with `dotnet ef migrations script --idempotent`).
-Migrations are applied at start-up under an advisory lock, and only after a verified safety backup of `gmss`
+`database/schema.sql` is a checked-in reference for the schema; the Admin app applies EF Core migrations, not this SQL
+file. Keep the reference SQL and model snapshot synchronized with forward migrations. Migrations are applied at
+start-up under an advisory lock, and only after a verified safety backup of `gmss`
 when migrations are pending (FR-73).
 
 ## 5. Integration methods
@@ -216,7 +217,7 @@ refuses to restore `maintenance_demo` while the agent is running.
 | `IAuthenticationProvider`, `IUserAccountStore` | Replace the local sign-in, for example with a directory service |
 | `IModuleDatabases` | A module's own database connection from a configuration section, using `GMSS_DB_PASSWORD` |
 | `IRestoreGuard` | Refuse a restore while something depends on a database |
-| `IAuditLog` | Write security audit entries that appear in the Security and audit report |
+| `IAuditLog` | Write attributed audit entries shown in direct Log History browsing and the Security and audit report |
 | `ISchedulerClient` | Create tasks by system key or name, run them now, and trigger them by stable task key with separate event name, source and bounded JSON event data |
 | `ISchedulerNotifications` | Create immediate or one-time UTC notifications, list/cancel a module's future notifications, and show/mark read the signed-in user's inbox |
 
@@ -264,8 +265,8 @@ stored, and are cached (FR-36, FR-37). Defaults are seeded at first start and ne
 | HealthCpuPercentThreshold | 80 | 1–100 | |
 | HealthMemoryMegabytesThreshold | 1024 | 128–1,048,576 | |
 
-Computer-specific settings (folders, login bypass, agent address) are in the user settings file, described in the
-installation guide. The embedded `appsettings.json` holds the `Database`, `Inventory`, `MaintenanceAgent` and
+Computer-specific settings (backup/log/export folders, recent backup/export locations, login bypass and agent address)
+are in the user settings file, described in the installation guide. The embedded `appsettings.json` holds the `Database`, `Inventory`, `MaintenanceAgent` and
 `Engine` defaults. Passwords and keys come only from the environment variables `GMSS_DB_PASSWORD` and
 `GSST_AGENT_KEY` (NFR-15).
 
@@ -279,8 +280,11 @@ Every run writes structured entries through the enabled logging providers (FR-28
 | File | One JSON-lines file per day, `gmssYYYYMMDD.log`, in the log folder | on, from Info |
 | Console | Standard output, for development | off |
 
-Levels are Info, Warning and Error. Security events (sign-ins, user changes, login bypass changes) are Info entries
-with source `Security`. The Log Clean-up task removes executions, errors, log entries and log files older than
+Levels are Info, Warning and Error. Security events (sign-ins, user changes, login bypass changes, module audit
+events and report/export actions) are written with source `Security`. The administrator/developer-only Log History
+page directly queries audit events, scheduler logs and login attempts; the Error log directly queries execution
+errors. Reports remain generated views and are not required to browse these logs. The Log Clean-up task removes
+executions, errors, log entries and log files older than
 `LogRetentionDays`, and sign-in and audit records older than `AuditRetentionDays`.
 
 ## 9. Backup set format

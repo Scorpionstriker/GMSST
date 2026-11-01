@@ -1,4 +1,4 @@
-# GSST UI Layer
+# GSST UI Layer README
 
 Project: `Scheduler.Admin`.
 
@@ -7,10 +7,20 @@ registers the core layers and the modules listed in `ModuleCatalog.cs`, starts t
 opens (showing a start-up screen, and a plain-language message with Try again if PostgreSQL cannot be reached)
 and stops it in a controlled way when the window closes.
 
-Menu: Dashboard, Tasks, Queue, Execution History, Error Log, Reports, module pages (Inventory, Maintenance
-Agent, Users), Configuration, Modules, Backup & Restore and Help. Pages live in `Components/Pages`, shared parts (status
-badges, paging, confirmation dialog, SVG charts) in `Components/Shared`, and the start-up, toast, theme and
-file-export services in `Services`. Module pages are found in the module assemblies by the router. When the
-Login and Security module is loaded, every page except Login requires a signed-in user and Viewers do not see
-administrator-only pages. Without a login module the pages stay closed, unless the developer login bypass is on,
-in which case every page shows a red warning.
+Menu: Dashboard, Tasks, Queue, Execution History, Error Log, administrator/developer Log History, Reports,
+Notifications and Account, module pages (Inventory, Maintenance Agent, Users), Configuration, Modules,
+Backup & Restore and Help. Pages live in `Components/Pages`, shared parts (status badges, paging, confirmation
+dialog, SVG charts) in `Components/Shared`, and startup, toast, theme, folder-picker and CSV-save services in
+`Services`.
+
+Module pages are discovered from the assemblies in `ModuleCatalog.cs`. Menu visibility is role-aware:
+Administrators and Developer super-admins have administrative access; Viewers can read monitoring pages but
+cannot change system data. Use cases independently enforce authorization, so hiding a link is not the security
+boundary. Local machine paths, including the configured default CSV folder and recent export/backup locations,
+are held in the local user settings file, not database backups.
+
+The Error log and Log History are direct query pages. Reports remain generated views with filters and optional
+CSV/print output. CSV exports support a configured default and an editable destination. The Help page's Developer
+Support topic links to the architecture, module and core-development guides.
+
+See [How_It_Works.md](docs/How_It_Works.md) and [Core_Development.md](docs/Core_Development.md).
