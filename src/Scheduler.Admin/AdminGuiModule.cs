@@ -27,6 +27,7 @@ public sealed class AdminGuiModule : ISchedulerModule
         new("Queue", "/queue", "Scheduling"),
         new("Execution history", "/executions", "Monitoring"),
         new("Error log", "/errors", "Monitoring"),
+        new("Log history", "/logs", "Monitoring", AdministratorOnly: true),
         new("Reports", "/reports", "Monitoring"),
         new("Configuration", "/configuration", "Administration", AdministratorOnly: true),
         new("Modules", "/modules", "Administration"),

@@ -109,7 +109,13 @@ output, error and log entries. **Print** prints the current list.
 Errors from failed runs, newest first, with time, task, error type, message, the run's status and the retry number.
 Filter by task, text and date range. Select a row for the technical details, including the stack trace.
 
-## 8. Reports
+## 8. Log history
+
+Administrators and Developer super-admins can browse persisted **Audit**, **Scheduler logs** and **Login attempts** in
+separate tabs without generating a report. Filter each tab by text and date range; scheduler logs and audit events can
+also be filtered by level. The Error log remains available as its own page.
+
+## 9. Reports
 
 Choose a report, a date range (up to 366 days) and optional filters, then view, **Print** or **Export CSV**:
 
@@ -124,7 +130,7 @@ Choose a report, a date range (up to 366 days) and optional filters, then view, 
 Inventory task runs (stock reports, low-stock checks and weekly summaries), including manual runs, also appear in
 **Execution history** with their output and run logs. Passwords, recovery codes and keys are never written to audit entries.
 
-## 9. Backup and restore (administrators)
+## 10. Backup and restore (administrators)
 
 The page shows where the PostgreSQL tools were found and lists the backup sets in the chosen folder.
 

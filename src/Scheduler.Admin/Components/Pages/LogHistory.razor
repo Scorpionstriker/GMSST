@@ -1,0 +1,161 @@
+@page "/logs"
+@using Scheduler.Application.Logging
+@inject IQueryHandler<SearchLogHistoryQuery, PagedResult<LogHistoryItem>> SearchLogs
+@inject IQueryHandler<SearchLoginAttemptsQuery, PagedResult<LoginAttemptItem>> SearchLoginAttempts
+
+<div class="page-header"><h1>Log history</h1></div>
+<p class="muted">Browse recorded audit events and scheduler logs directly, without generating a report. Failed sign-in attempts are listed separately.</p>
+
+<div class="toolbar">
+    <div class="segmented" role="group" aria-label="Log category">
+        <button class="btn @(_tab == LogTab.Audit ? "selected" : "")" @onclick="() => SelectTabAsync(LogTab.Audit)">Audit</button>
+        <button class="btn @(_tab == LogTab.Scheduler ? "selected" : "")" @onclick="() => SelectTabAsync(LogTab.Scheduler)">Scheduler logs</button>
+        <button class="btn @(_tab == LogTab.LoginAttempts ? "selected" : "")" @onclick="() => SelectTabAsync(LogTab.LoginAttempts)">Login attempts</button>
+        <a class="btn" href="errors">Error log</a>
+    </div>
+</div>
+
+<form class="toolbar" @onsubmit="() => LoadAsync(1)">
+    <div class="field"><label for="search">Search</label><input id="search" @bind="_text" placeholder="@SearchPlaceholder" /></div>
+    @if (_tab != LogTab.LoginAttempts)
+    {
+        <div class="field">
+            <label for="level">Level</label>
+            <select id="level" @bind="LevelFilter">
+                <option value="">Any</option>
+                @foreach (var level in Enum.GetValues<SchedulerLogLevel>())
+                {
+                    <option value="@level">@Display.Words(level)</option>
+                }
+            </select>
+        </div>
+    }
+    <div class="field"><label for="from">From</label><DateField Id="from" @bind-Value="_from" /></div>
+    <div class="field"><label for="to">To</label><DateField Id="to" @bind-Value="_to" /></div>
+    <button class="btn" type="submit">Apply</button>
+</form>
+
+<ErrorBanner Result="_failed" />
+<FieldError Result="_failed" Field="To" />
+
+@if (_tab == LogTab.LoginAttempts)
+{
+    @if (_loginPage is { } loginPage)
+    {
+        @if (loginPage.TotalCount == 0)
+        {
+            <div class="card"><p>No login attempts recorded for these filters.</p></div>
+        }
+        else
+        {
+            <div class="card table-wrap">
+                <table class="table">
+                    <thead><tr><th>Time</th><th>Username</th><th>Outcome</th><th>Reason</th></tr></thead>
+                    <tbody>
+                        @foreach (var attempt in loginPage.Items)
+                        {
+                            <tr>
+                                <td style="white-space:nowrap">@Display.Time(attempt.AttemptedAtUtc)</td>
+                                <td>@attempt.Username</td>
+                                <td><StatusBadge Text="@(attempt.Succeeded ? "Succeeded" : "Failed")" Tone="@(attempt.Succeeded ? "success" : "danger")" /></td>
+                                <td>@attempt.Reason</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <Pager Page="loginPage" Changed="LoadAsync" />
+            </div>
+        }
+    }
+}
+else if (_logPage is { } logPage)
+{
+    @if (logPage.TotalCount == 0)
+    {
+        <div class="card"><p>No @(_tab == LogTab.Audit ? "audit events" : "scheduler logs") recorded for these filters.</p></div>
+    }
+    else
+    {
+        <div class="card table-wrap">
+            <table class="table">
+                <thead><tr><th>Time</th><th>Level</th><th>Source</th><th>Action</th><th>User</th><th>Application</th><th>Message</th></tr></thead>
+                <tbody>
+                    @foreach (var entry in logPage.Items)
+                    {
+                        <tr>
+                            <td style="white-space:nowrap">@Display.Time(entry.LoggedAtUtc)</td>
+                            <td><StatusBadge Value="entry.Level" /></td>
+                            <td>@entry.Source</td>
+                            <td>@entry.Action</td>
+                            <td>@entry.User</td>
+                            <td>@entry.Application</td>
+                            <td>
+                                @entry.Message
+                                @if (entry.ExecutionId is { } executionId)
+                                {
+                                    <div class="hint"><a href="executions?id=@executionId">Open execution</a></div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <Pager Page="logPage" Changed="LoadAsync" />
+        </div>
+    }
+}
+
+@code {
+    private enum LogTab { Audit, Scheduler, LoginAttempts }
+
+    private LogTab _tab = LogTab.Audit;
+    private PagedResult<LogHistoryItem>? _logPage;
+    private PagedResult<LoginAttemptItem>? _loginPage;
+    private Result? _failed;
+    private DateTime? _from = DateTime.Today.AddDays(-7);
+    private DateTime? _to = DateTime.Today;
+    private DateTime? _fromUtc;
+    private DateTime? _toUtc;
+    private SchedulerLogLevel? _level;
+    private string? _text;
+
+    private string SearchPlaceholder => _tab == LogTab.Audit ? "Action, user, application or message" :
+        _tab == LogTab.LoginAttempts ? "Username or reason" : "Source or message";
+
+    private string LevelFilter
+    {
+        get => _level?.ToString() ?? "";
+        set => _level = Enum.TryParse<SchedulerLogLevel>(value, out var level) ? level : null;
+    }
+
+    protected override Task OnInitializedAsync() => LoadAsync(1);
+
+    private async Task SelectTabAsync(LogTab tab)
+    {
+        _tab = tab;
+        await LoadAsync(1);
+    }
+
+    private async Task LoadAsync(int pageNumber)
+    {
+        _from ??= DateTime.Today.AddDays(-7);
+        _to ??= DateTime.Today;
+        _fromUtc = Display.ToUtc(_from.Value.Date);
+        _toUtc = Display.ToUtc(Display.EndOfDay(_to));
+        var text = string.IsNullOrWhiteSpace(_text) ? null : _text.Trim();
+        if (_tab == LogTab.LoginAttempts)
+        {
+            var result = await SearchLoginAttempts.HandleAsync(new SearchLoginAttemptsQuery(
+                new LoginAttemptFilter(_fromUtc, _toUtc, text), new PageRequest(pageNumber)));
+            _failed = result.IsFailure ? result : null;
+            _loginPage = result.Value ?? _loginPage;
+        }
+        else
+        {
+            var result = await SearchLogs.HandleAsync(new SearchLogHistoryQuery(
+                new LogHistoryFilter(_tab == LogTab.Audit, _fromUtc, _toUtc, _level, text), new PageRequest(pageNumber)));
+            _failed = result.IsFailure ? result : null;
+            _logPage = result.Value ?? _logPage;
+        }
+    }
+}

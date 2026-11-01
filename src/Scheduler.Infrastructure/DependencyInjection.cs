@@ -7,6 +7,7 @@ using Scheduler.Application.Common;
 using Scheduler.Application.Common.Persistence;
 using Scheduler.Application.Configuration;
 using Scheduler.Application.Executions;
+using Scheduler.Application.Logging;
 using Scheduler.Application.Queue;
 using Scheduler.Application.Reports;
 using Scheduler.Application.Tasks;
@@ -66,6 +67,7 @@ public static class DependencyInjection
         services.AddSingleton<ITaskQueries, TaskQueries>();
         services.AddSingleton<IQueueQueries, QueueQueries>();
         services.AddSingleton<IExecutionQueries, ExecutionQueries>();
+        services.AddSingleton<ILogHistoryQueries, LogHistoryQueries>();
         services.AddSingleton<IReportQueries, ReportQueries>();
         services.AddSingleton<IResourceHealthReader, ResourceHealthReader>();
 
