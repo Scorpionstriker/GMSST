@@ -1,8 +1,10 @@
-# Generic System Scheduler Template (GSST)
+# Generic Moduler System Scheduler Template (GSST)
 
 A locally hosted, modular task scheduler written in C# on .NET 10 with PostgreSQL. It is a starting
 point: developers extend it through the extensibility layer, or edit the core projects directly.
 Requirement IDs (FR-xx, NFR-xx, DR-xx) refer to the project's Requirements Specification.
+
+The current project and application version is **1.0.0** (MAUI build number **1**).
 
 ## Solution layout
 
@@ -40,7 +42,7 @@ GSST/
 | Project | What it does | Requirements it serves |
 |---|---|---|
 | **Scheduler.Domain** | Entities (ScheduledTask, Schedule, QueueEntry, TaskExecution, AppUser ...), status enums and domain rules. References nothing. | FR-03, FR-04, FR-08, FR-19, FR-23, NFR-17 |
-| **Scheduler.Extensibility** | Public contracts including `ITaskHandler`, `ITaskContext`, `ISchedulerModule`, `ISchedulerClient`, `ISchedulerNotifications`, `IAuditLog`, providers and scheduler events. Modules depend on contracts, not core implementations. | FR-06, FR-40 to FR-43, NFR-07 |
+| **Scheduler.Extensibility** | Public contracts including `ITaskHandler`, `ITaskContext`, `ISchedulerModule`, `ISchedulerClient`, `ISchedulerNotifications`, `IApplicationControl`, `IAuditLog`, providers and scheduler events. Modules depend on contracts, not core implementations. | FR-06, FR-40 to FR-43, NFR-07 |
 | **Scheduler.Application** | Use cases (create/pause/run tasks, reports, log history, configuration and notifications), validation, cron parser, schedule calculator, retry policy, dependency-cycle check. Handlers return a `Result` instead of throwing. | FR-01 to FR-17, FR-26, FR-27, FR-31, FR-36, FR-37, FR-64 to FR-66, FR-74 to FR-76 |
 | **Scheduler.Infrastructure** | EF Core + Npgsql persistence and migrations, `SELECT ... FOR UPDATE SKIP LOCKED` claiming, Console/File/Database logging providers, `IMemoryCache`, backup and restore with pg_dump/pg_restore. | FR-20, FR-25, FR-28 to FR-30, FR-35, FR-38, FR-39, FR-67 to FR-73, NFR-03, NFR-14 to NFR-16 |
 | **Scheduler.Engine** | The adaptive polling loop, enqueuing, bounded worker pool, time-outs, retries, start-up recovery, controlled shutdown, built-in task handlers. Hosted only by the Admin app: one engine per database. | FR-07, FR-18 to FR-25, FR-31 to FR-34, NFR-01, NFR-02, NFR-11 |

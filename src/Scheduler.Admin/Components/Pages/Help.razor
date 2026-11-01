@@ -151,7 +151,7 @@
                 break;
             case "developer":
                 <h2>Developer Support</h2>
-                <p>GSST is a modular monolith. The Admin application composes the scheduler core and modules; the engine does not reference demo applications.
+                <p>Generic Moduler System Scheduler Template (GSST) is a modular monolith. The Admin application composes the scheduler core and modules; the engine does not reference demo applications.
                     Use the extensibility contracts for application-specific behavior. Change core projects only for behavior that should apply to every module or host.</p>
                 <h3>How work runs</h3>
                 <ol>
@@ -162,6 +162,7 @@
                 <h3>Extension contracts</h3>
                 <p><span class="mono">ISchedulerModule</span> adds services, handlers and pages. <span class="mono">ISchedulerClient</span> manages stable-key tasks and event-triggered runs.
                     <span class="mono">IAuditLog</span> records attributed user actions; <span class="mono">ISchedulerNotifications</span> manages in-app notices.
+                    <span class="mono">IApplicationControl</span> exposes the host version and requests a platform-managed application close.
                     Keep module data and business rules in the module, not in the scheduler core.</p>
                 <h3>Documentation</h3>
                 <ul>

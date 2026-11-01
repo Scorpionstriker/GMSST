@@ -18,13 +18,13 @@
         <MauiXamlInflator>SourceGen</MauiXamlInflator>
 
         <!-- Display name -->
-        <ApplicationTitle>Generic System Scheduler</ApplicationTitle>
+        <ApplicationTitle>Generic Moduler System Scheduler Template</ApplicationTitle>
 
         <!-- App Identifier -->
         <ApplicationId>com.gsst.scheduler.admin</ApplicationId>
 
         <!-- Versions -->
-        <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+        <ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
         <ApplicationVersion>1</ApplicationVersion>
 
         <!-- Unpackaged Windows app, see https://aka.ms/MauiTemplateUnpackaged -->

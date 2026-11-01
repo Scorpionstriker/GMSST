@@ -1,6 +1,6 @@
 # Technical guide
 
-This guide is for developers who maintain or extend the Generic System Scheduler Template (GSST). It explains the
+This guide is for developers who maintain or extend the Generic Moduler System Scheduler Template (GSST). It explains the
 architecture, how the engine works, the database design, the two ways other applications integrate with the
 scheduler, and how to add a module. Requirement IDs (FR, NFR, BR, DR) refer to the Requirements Specification.
 Installation is covered in the [Installation guide](Installation_Guide.md).
@@ -15,7 +15,7 @@ GSST is a layered, modular monolith that runs on one computer (NFR-07, NFR-09). 
 | Core Scheduling Engine | Scheduler.Application | Use cases with validation, authorisation and logging decorators, cron parser, schedule calculator, retry policy, reports, backup and configuration use cases | Domain, Extensibility |
 | Core Scheduling Engine | Scheduler.Engine | Scheduling loop, worker pool, task executor, recovery, built-in task types | Application, Domain, Extensibility |
 | Data | Scheduler.Infrastructure | EF Core and Npgsql persistence, migrations, queue claiming, logging providers, cache, backup with pg_dump and pg_restore, engine lock | Application, Domain, Extensibility |
-| Extensibility | Scheduler.Extensibility | Public contracts for modules: `ITaskHandler`, `ISchedulerModule`, `ILoggingProvider`, `IAuthenticationProvider`, `ISchedulerClient`, `ISchedulerNotifications` and others | Domain |
+| Extensibility | Scheduler.Extensibility | Public contracts for modules: `ITaskHandler`, `ISchedulerModule`, `ILoggingProvider`, `IAuthenticationProvider`, `ISchedulerClient`, `ISchedulerNotifications`, `IApplicationControl` and others | Domain |
 | Extensibility | Scheduler.Modules.Security | Login and Security module: local users, PBKDF2 hashing, lockout, roles, self-registration with administrator approval, self-service username and password changes, password recovery with a one-time recovery code (no email needed), Login, Register, Forgot password, Users and Account pages | Extensibility |
 | User interface | Scheduler.Admin | .NET MAUI Blazor Hybrid desktop app and composition root; hosts the engine | everything |
 | Demo apps | DemoApps.InventoryMonitor | Integration method 1: a module inside the scheduler | Extensibility |
@@ -220,6 +220,7 @@ refuses to restore `maintenance_demo` while the agent is running.
 | `IAuditLog` | Write attributed audit entries shown in direct Log History browsing and the Security and audit report |
 | `ISchedulerClient` | Create tasks by system key or name, run them now, and trigger them by stable task key with separate event name, source and bounded JSON event data |
 | `ISchedulerNotifications` | Create immediate or one-time UTC notifications, list/cancel a module's future notifications, and show/mark read the signed-in user's inbox |
+| `IApplicationControl` | Read the host application's display version and request a platform-managed close from module UI |
 
 For event-driven work, a module owns the mapping between its business event and a stable task system key:
 

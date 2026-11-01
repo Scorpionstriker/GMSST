@@ -4,10 +4,12 @@
 @inject IAuditLog Audit
 @inject UserSession Session
 @inject NavigationManager Navigation
+@inject IApplicationControl ApplicationControl
 
 <div class="login-screen">
     <div class="card login-card">
-        <h1>Generic System Scheduler</h1>
+        <h1>Generic Moduler System Scheduler Template</h1>
+        <p class="muted">Version @ApplicationControl.Version</p>
 
         @if (_loadError is not null)
         {
@@ -77,6 +79,7 @@
                 <a href="login/register">Register</a>
             </div>
         }
+        <button class="btn" type="button" @onclick="ApplicationControl.RequestClose">Close application</button>
     </div>
 </div>
 

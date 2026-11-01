@@ -1,6 +1,6 @@
 # User manual
 
-This manual explains how to use the Admin application of the Generic System Scheduler Template (GSST). Each section
+This manual explains how to use the Admin application of the Generic Moduler System Scheduler Template (GSST). Each section
 covers one page of the menu. Screenshots are marked as placeholders and are added from the final build.
 
 ## 1. Signing in and roles
@@ -31,6 +31,10 @@ wrong. If you have no recovery code, ask an administrator to reset your password
 | Viewer | Read every monitoring page, reports and Help; cannot change anything. Configuration, Backup and restore and Users are hidden |
 
 > Screenshot placeholder: sign-in page.
+
+The application version appears on the sign-in page and in the navigation menu. **Close application** is available
+on the sign-in page and in the menu; closing gives running scheduler work its configured shutdown grace period,
+and unfinished work is recovered by the next engine start.
 
 If a red banner says "Login bypassed (developer mode)", the app was opened without sign-in for development. See
 the installation guide, section 8.

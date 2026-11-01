@@ -1,6 +1,6 @@
 # User acceptance test plan
 
-This plan describes how the Generic System Scheduler Template (GSST) is evaluated by its intended users (DR-06).
+This plan describes how the Generic Moduler System Scheduler Template (GSST) is evaluated by its intended users (DR-06).
 The results are recorded in [UAT_Report.md](UAT_Report.md).
 
 ## 1. Objectives

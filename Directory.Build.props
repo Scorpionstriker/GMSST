@@ -5,7 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Authors>Dihan Visagie</Authors>
-    <Product>Generic System Scheduler Template</Product>
+    <Product>Generic Moduler System Scheduler Template</Product>
+    <Version>1.0.0</Version>
     <!-- NFR-13: audit every package for known vulnerabilities on restore. -->
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>

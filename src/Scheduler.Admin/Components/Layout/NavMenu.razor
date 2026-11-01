@@ -2,11 +2,12 @@
 @inject ICurrentUser CurrentUser
 @inject IEnumerable<ISchedulerModule> Modules
 @inject Scheduler.Application.Modules.IModuleSwitches Switches
+@inject IApplicationControl ApplicationControl
 
 @* Menu grouped by purpose (FR-55). Administrator-only entries are hidden from Viewers (FR-49); modules add their
    own entries (the core pages come from the Admin GUI module), which disappear when the module is removed (FR-41) or switched off on the Modules page. *@
 <nav class="sidebar no-print" aria-label="Main menu">
-    <div class="brand">Generic System Scheduler<small>Administration</small></div>
+    <div class="brand">Generic Moduler System Scheduler Template<small>Administration · v@ApplicationControl.Version</small></div>
     @foreach (var group in Groups())
     {
         <div class="nav-group">@group.Key</div>
@@ -15,6 +16,7 @@
             <NavLink class="nav-link" href="@item.Route.TrimStart('/')" Match="@(item.Route == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)">@item.Title</NavLink>
         }
     }
+    <button class="nav-link" type="button" @onclick="ApplicationControl.RequestClose">Close application</button>
 </nav>
 
 @code {

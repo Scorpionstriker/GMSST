@@ -13,6 +13,8 @@ scheduler implementations:
   event-triggered runs. Event-to-task mappings remain owned by the module.
 - `ISchedulerNotifications` creates immediate or one-time scheduled, recipient-specific in-app notifications,
   manages a module's pending notices and reads the signed-in user's inbox.
+- `IApplicationControl` exposes the host app version and lets UI modules request a normal application close; the
+  host handles platform-specific shutdown.
 - `IAuditLog` records user and module actions to the scheduler's audit log, with application attribution.
 - `ILoggingProvider`, `IAuthenticationProvider`, `IUserAccountStore`, `IModuleDatabases`, `IRestoreGuard`,
   `IManagedApplication` and scheduler events provide logging, authentication, data, restore, managed-process and

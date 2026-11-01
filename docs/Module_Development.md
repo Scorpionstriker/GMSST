@@ -91,6 +91,8 @@ public sealed class InventoryModule : ISchedulerModule
   Never include passwords, recovery codes, keys or other secrets.
 - **Notifications:** use `ISchedulerNotifications` for immediate or one-time UTC notices. Scheduled-notice queries
   and cancellation are limited to the calling source; inbox access is limited to the signed-in user.
+- **Host application:** use `IApplicationControl` to display the host's version and request a normal close from
+  module UI. The host owns the platform-specific shutdown behavior.
 - **Pages and menu:** add Razor pages to the module assembly and list routes through `MenuItems`. Set
   `AdministratorOnly` or `DeveloperOnly` for menu visibility; protect sensitive application operations through
   authorization as well.

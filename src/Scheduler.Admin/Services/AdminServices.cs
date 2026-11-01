@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Scheduler.Application.Configuration;
+using Scheduler.Extensibility.Contracts;
 
 namespace Scheduler.Admin.Services;
 
@@ -12,6 +13,7 @@ public static class AdminServices
         services.AddSingleton<ToastService>();
         services.AddSingleton<IPreferenceStore>(_ => new FilePreferenceStore());
         services.AddSingleton<ThemeService>();
+        services.AddSingleton<IApplicationControl, MauiApplicationControl>();
         services.AddSingleton<IFileSaver>(sp => new DocumentsFileSaver(sp.GetRequiredService<IMachineSettingsStore>()));
         services.AddSingleton<PrintService>();
         return services;

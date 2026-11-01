@@ -32,7 +32,7 @@ public partial class App : Microsoft.Maui.Controls.Application
     protected override Window CreateWindow(IActivationState? activationState)
     {
         var page = new MainPage();
-        var window = new Window(page) { Title = "Generic System Scheduler" };
+        var window = new Window(page) { Title = "Generic Moduler System Scheduler Template" };
 
         // A MAUI app does not run hosted services, so the scheduler starts when the window opens. Start-up
         // errors are shown on the start-up screen rather than closing the app (Phase 4, Section 3.1.3).

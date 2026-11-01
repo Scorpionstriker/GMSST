@@ -1,6 +1,6 @@
 # Installation and configuration guide
 
-This guide sets up the Generic System Scheduler Template (GSST) on one Windows computer, which is the main
+This guide sets up the Generic Moduler System Scheduler Template (GSST) on one Windows computer, which is the main
 platform (NFR-10). Everything runs locally: PostgreSQL, the Admin application (which hosts the only scheduling
 engine) and the Maintenance Agent. For macOS see [Build_macOS.md](Build_macOS.md); for Linux, which runs the core
 libraries and the Maintenance Agent only, see [Build_Linux.md](Build_Linux.md).

@@ -1,4 +1,4 @@
-/* Generic System Scheduler: one stylesheet for the Admin application and the module pages (Phase 4, Section 7).
+/* Generic Moduler System Scheduler Template: one stylesheet for the Admin application and the module pages (Phase 4, Section 7).
    Colours are variables, so the dark theme only redefines them (FR-63). */
 
 :root, [data-theme="light"] {
