@@ -28,7 +28,7 @@
 {
     @if (page.TotalCount == 0)
     {
-        <div class="card"><p>The queue is empty. Due runs appear here until a worker picks them up.</p></div>
+        <div class="card"><p>@EmptyMessage</p></div>
     }
     else
     {
@@ -80,6 +80,13 @@
     private QueueStatus? _show;
     private QueueListItem? _cancelling;
     private Timer? _debounce;
+
+    private string EmptyMessage => _show switch
+    {
+        QueueStatus.Waiting => "No runs are waiting for a worker. Future scheduled runs appear only when they are due, and workers may claim due runs quickly.",
+        QueueStatus.Claimed => "No runs are currently claimed by a worker. Claimed runs leave this list when they finish.",
+        _ => "No runs are currently waiting or claimed. Future scheduled runs appear only when they are due; completed runs are not shown here."
+    };
 
     protected override async Task OnInitializedAsync()
     {
