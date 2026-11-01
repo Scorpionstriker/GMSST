@@ -47,5 +47,8 @@ public sealed class UserAccount
 /// <summary>The account was changed by someone else after it was read (WP-7, F-27).</summary>
 public sealed class UserAccountConflictException(string message, Exception? inner = null) : Exception(message, inner);
 
+/// <summary>A username was claimed by another account before the change was saved.</summary>
+public sealed class UserAccountNameConflictException(string message, Exception? inner = null) : InvalidOperationException(message, inner);
+
 /// <summary>One sign-in attempt (FR-53).</summary>
 public sealed record LoginAuditRecord(Guid? UserId, string UsernameAttempted, bool Succeeded, string? Reason, DateTime AttemptedAtUtc);

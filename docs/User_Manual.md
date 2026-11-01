@@ -14,7 +14,7 @@ activity (default 20).
 **Recovery code.** Every account gets a recovery code such as `K7QM-2XNB-R9TD-HW4P` when it is created. It is shown
 only once, so write it down. The scheduler runs locally without email, so this code is how you prove who you are when
 you forget your password. It works once; each time you use it you get a new one. You can also create a new code on the
-Change password page, which makes the old one stop working.
+Account page, which makes the old one stop working.
 
 **Register.** Select **Register** on the sign-in page to ask for an account: choose a username and password and
 note the recovery code. The account is a Viewer and cannot sign in until an administrator activates it on the Users
@@ -192,9 +192,11 @@ Accounts registered on the sign-in page show **Waiting for approval**. Select **
 to let the person sign in; change the role to Administrator first if they need it. When you add a user, the page
 shows their recovery code once: give it to them with their password.
 
-## 16. Change password
+## 16. Account
 
-Enter the current password and the new one twice. Passwords need at least 10 characters.
+Change your username after entering the current password. Usernames must be unique, 1–50 characters, and contain no
+spaces. The change is recorded in the Security and audit report and takes effect immediately in your signed-in session.
+To change your password, enter the current password and the new one twice. Passwords need at least 10 characters.
 
 Under **Recovery code**, enter your current password and select **Create a new recovery code** to get a new code for
 "Forgot password?". Accounts that existed before recovery codes were added have none until you create one here.

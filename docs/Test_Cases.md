@@ -369,6 +369,6 @@ Tick each one when it does what its label says.
 | Configuration | Change, Save, Cancel, Add override, Use global value, provider switches and levels, This computer Save | ☐ |
 | Modules, Help | Links on the page | ☐ |
 | Users | Add user, Create user, Edit, Save (role and status changes, unlocking a locked account), Reset password, Deactivate (confirm and Keep active) | ☐ |
-| Change password | Change password with a wrong and a right current password | ☐ |
+| Account | Change username with an incorrect password, an existing username and a valid new username; verify that the signed-in name updates and the new username can sign in. Change password with a wrong and a right current password. | ☐ |
 | Inventory | Add product, Edit, Save, Delete (confirm and Keep), −1, +10, Refresh, Run check now | ☐ |
 | Maintenance Agent | Refresh, Run health check now | ☐ |

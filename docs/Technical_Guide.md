@@ -16,7 +16,7 @@ GSST is a layered, modular monolith that runs on one computer (NFR-07, NFR-09). 
 | Core Scheduling Engine | Scheduler.Engine | Scheduling loop, worker pool, task executor, recovery, built-in task types | Application, Domain, Extensibility |
 | Data | Scheduler.Infrastructure | EF Core and Npgsql persistence, migrations, queue claiming, logging providers, cache, backup with pg_dump and pg_restore, engine lock | Application, Domain, Extensibility |
 | Extensibility | Scheduler.Extensibility | Public contracts for modules: `ITaskHandler`, `ISchedulerModule`, `ILoggingProvider`, `IAuthenticationProvider`, `ISchedulerClient` and others | Domain |
-| Extensibility | Scheduler.Modules.Security | Login and Security module: local users, PBKDF2 hashing, lockout, roles, self-registration with administrator approval, password recovery with a one-time recovery code (no email needed), Login, Register, Forgot password, Users and Change password pages | Extensibility |
+| Extensibility | Scheduler.Modules.Security | Login and Security module: local users, PBKDF2 hashing, lockout, roles, self-registration with administrator approval, self-service username and password changes, password recovery with a one-time recovery code (no email needed), Login, Register, Forgot password, Users and Account pages | Extensibility |
 | User interface | Scheduler.Admin | .NET MAUI Blazor Hybrid desktop app and composition root; hosts the engine | everything |
 | Demo apps | DemoApps.InventoryMonitor | Integration method 1: a module inside the scheduler | Extensibility |
 | Demo apps | DemoApps.MaintenanceAgentConnector | Integration method 2: a module that manages the separate Maintenance Agent | Extensibility |

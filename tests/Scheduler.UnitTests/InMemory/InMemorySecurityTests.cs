@@ -73,6 +73,46 @@ public class InMemorySecurityTests
     }
 
     [Fact]
+    public async Task User_CanChangeOwnUsernameAfterEnteringCurrentPassword()
+    {
+        await using var host = await SignedInAdministratorAsync();
+        var users = host.Get<UserManagement>();
+        await users.CreateUserAsync("viewer2", Password, Password, UserRole.Viewer);
+        Assert.True((await host.Get<IAuthenticationProvider>().SignInAsync("viewer2", Password)).Succeeded);
+
+        var wrongPassword = await users.ChangeOwnUsernameAsync("wrong password 1", "renamed");
+        Assert.False(wrongPassword.Succeeded);
+        Assert.Equal("Current", wrongPassword.Field);
+
+        var changed = await users.ChangeOwnUsernameAsync(Password, " renamed ");
+        Assert.True(changed.Succeeded);
+        Assert.Equal("renamed", host.Get<ICurrentUser>().Username);
+        Assert.NotNull(await host.Users.FindByUsernameAsync("renamed"));
+        Assert.Null(await host.Users.FindByUsernameAsync("viewer2"));
+        await host.Get<IAuthenticationProvider>().SignOutAsync();
+        Assert.True((await host.Get<IAuthenticationProvider>().SignInAsync("renamed", Password)).Succeeded);
+        Assert.Contains(host.Logger.Entries, entry => entry.Properties?["action"] as string == "UsernameChanged");
+    }
+
+    [Fact]
+    public async Task User_CannotChangeOwnUsernameToInvalidOrTakenName()
+    {
+        await using var host = await SignedInAdministratorAsync();
+        var users = host.Get<UserManagement>();
+        await users.CreateUserAsync("viewer2", Password, Password, UserRole.Viewer);
+        await users.CreateUserAsync("viewer3", Password, Password, UserRole.Viewer);
+        Assert.True((await host.Get<IAuthenticationProvider>().SignInAsync("viewer2", Password)).Succeeded);
+
+        var duplicate = await users.ChangeOwnUsernameAsync(Password, "VIEWER3");
+        var invalid = await users.ChangeOwnUsernameAsync(Password, "has spaces");
+
+        Assert.Equal("Username", duplicate.Field);
+        Assert.Equal("This username is already taken.", duplicate.Error);
+        Assert.Equal("Username", invalid.Field);
+        Assert.Null(await host.Users.FindByUsernameAsync("has spaces"));
+    }
+
+    [Fact]
     public async Task UserChanges_AreAudited_WithoutPasswords()
     {
         await using var host = await SignedInAdministratorAsync();

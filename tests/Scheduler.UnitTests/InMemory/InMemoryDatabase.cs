@@ -581,6 +581,12 @@ public sealed class InMemoryUserAccountStore : IUserAccountStore
                 throw new UserAccountConflictException("The user was changed by someone else. Open it again and repeat your change.");
             }
 
+            if (_users.Where((_, i) => i != index).Any(existing =>
+                    existing.Username.Equals(user.Username.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new UserAccountNameConflictException("Another user already has this username.");
+            }
+
             _users[index] = Copy(user, _nextVersion++);
             return 0;
         });

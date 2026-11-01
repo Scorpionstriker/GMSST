@@ -51,6 +51,21 @@ public sealed class UserSession : ICurrentUser, IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    public void UpdateUsername(Guid userId, string username)
+    {
+        lock (_gate)
+        {
+            if (!IsAuthenticated || UserId != userId)
+            {
+                return;
+            }
+
+            Username = username;
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     public void SignOut() => End(expired: false);
 
     public void RegisterActivity()

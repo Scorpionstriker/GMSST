@@ -22,6 +22,7 @@ public sealed class UserManagement(
     IUserAccountStore users,
     PasswordHasher hasher,
     ICurrentUser session,
+    UserSession userSession,
     IAuditLog audit,
     ISettingsReader settings,
     TimeProvider clock)
@@ -182,7 +183,7 @@ public sealed class UserManagement(
         return UserActionResult.Ok with { RecoveryCode = code };
     }
 
-    /// <summary>Whether the signed-in user has a recovery code, for the Change password page.</summary>
+    /// <summary>Whether the signed-in user has a recovery code, for the Account page.</summary>
     public async Task<bool> HasRecoveryCodeAsync(CancellationToken cancellationToken = default) =>
         session.UserId is { } userId && await users.FindByIdAsync(userId, cancellationToken) is { RecoveryCodeHash: not null };
 
@@ -357,6 +358,56 @@ public sealed class UserManagement(
         return UserActionResult.Ok;
     }
 
+    /// <summary>Changes the signed-in user's username after they enter their current password.</summary>
+    public async Task<UserActionResult> ChangeOwnUsernameAsync(string currentPassword, string username,
+        CancellationToken cancellationToken = default)
+    {
+        if (session.UserId is not { } userId || await users.FindByIdAsync(userId, cancellationToken) is not { } user)
+        {
+            return UserActionResult.Fail("Sign in again to change your username.");
+        }
+
+        if (!hasher.Verify(currentPassword ?? string.Empty, user.PasswordHash, user.PasswordSalt))
+        {
+            return UserActionResult.Fail("The current password is incorrect.", "Current");
+        }
+
+        username = NormalizeUsername(username);
+        if (ValidateUsername(username) is { } usernameProblem)
+        {
+            return usernameProblem;
+        }
+
+        if (string.Equals(user.Username, username, StringComparison.Ordinal))
+        {
+            return UserActionResult.Ok;
+        }
+
+        if (await users.UsernameExistsAsync(username, userId, cancellationToken))
+        {
+            return UserActionResult.Fail("This username is already taken.", "Username");
+        }
+
+        var oldUsername = user.Username;
+        user.Username = username;
+        try
+        {
+            await users.UpdateAsync(user, cancellationToken);
+        }
+        catch (UserAccountConflictException)
+        {
+            return Changed;
+        }
+        catch (UserAccountNameConflictException)
+        {
+            return UserActionResult.Fail("This username is already taken.", "Username");
+        }
+
+        userSession.UpdateUsername(userId, username);
+        await audit.RecordAsync("UsernameChanged", $"'{oldUsername}' changed their username to '{username}'.", cancellationToken);
+        return UserActionResult.Ok;
+    }
+
     private string Actor => session.Username is { } name ? $"Administrator '{name}'" : "An administrator";
 
     private static readonly UserActionResult Changed =
@@ -368,10 +419,10 @@ public sealed class UserManagement(
     private async Task<UserActionResult> CreateAsync(string username, string password, string confirmation, UserRole role, bool isActive,
         CancellationToken cancellationToken)
     {
-        username = (username ?? string.Empty).Trim();
-        if (username.Length is 0 or > UsernameMaxLength || username.Any(char.IsWhiteSpace))
+        username = NormalizeUsername(username);
+        if (ValidateUsername(username) is { } usernameProblem)
         {
-            return UserActionResult.Fail($"Enter a username of 1 to {UsernameMaxLength} characters without spaces.", "Username");
+            return usernameProblem;
         }
 
         if (await users.UsernameExistsAsync(username, null, cancellationToken))
@@ -398,6 +449,13 @@ public sealed class UserManagement(
         await users.CreateAsync(user, cancellationToken);
         return UserActionResult.Ok with { RecoveryCode = code };
     }
+
+    private static string NormalizeUsername(string? username) => (username ?? string.Empty).Trim();
+
+    private static UserActionResult? ValidateUsername(string username) =>
+        username.Length is 0 or > UsernameMaxLength || username.Any(char.IsWhiteSpace)
+            ? UserActionResult.Fail($"Enter a username of 1 to {UsernameMaxLength} characters without spaces.", "Username")
+            : null;
 
     private static UserActionResult? CheckPassword(string password, string confirmation, string username)
     {

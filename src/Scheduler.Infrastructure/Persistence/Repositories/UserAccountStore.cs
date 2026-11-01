@@ -98,7 +98,7 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
         }
         catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
         {
-            throw new InvalidOperationException("Another user already has this username.", ex);
+            throw new UserAccountNameConflictException("Another user already has this username.", ex);
         }
     }
 

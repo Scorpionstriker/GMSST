@@ -7,7 +7,7 @@ namespace Scheduler.Modules.Security;
 
 /// <summary>
 /// The Login and Security module (FR-44 to FR-53): local accounts, sign-in with lockout, the session with its idle
-/// time-out, and the Login, Users and Change password pages. It replaces the host's local administrator with the
+/// time-out, and the Login, Users and Account pages. It replaces the host's local administrator with the
 /// signed-in user. Remove this module from the module list (and its project reference) to run without sign-in.
 /// </summary>
 public sealed class SecurityModule : ISchedulerModule
@@ -27,7 +27,7 @@ public sealed class SecurityModule : ISchedulerModule
     public IReadOnlyList<ModuleMenuItem> MenuItems { get; } =
     [
         new("Users", "/users", "Administration", AdministratorOnly: true),
-        new("Change password", "/account/password", "Account")
+        new("Account", "/account/password", "Account")
     ];
 
     public void Register(IServiceCollection services)
