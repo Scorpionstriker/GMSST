@@ -24,9 +24,12 @@ internal sealed class RunTaskNowHandler(IUnitOfWorkFactory unitOfWorkFactory, Ti
             return Error.NotFound("Task");
         }
 
-        if (task.Status == ScheduledTaskStatus.Disabled)
+        if (task.Status is ScheduledTaskStatus.Disabled or ScheduledTaskStatus.Completed)
         {
-            return Error.Conflict("Task.Disabled", "A disabled task cannot be run. Enable it first.");
+            return Error.Conflict("Task.NotRunnable",
+                task.Status == ScheduledTaskStatus.Completed
+                    ? "This task has completed because it reached its execution limit."
+                    : "A disabled task cannot be run. Enable it first.");
         }
 
         var now = clock.GetUtcNow().UtcDateTime;

@@ -44,5 +44,25 @@ public class TaskStateTests
         Assert.False(QueueEntry.Create(task, null, TriggerType.Manual, DateTime.UtcNow, 0, DateTime.UtcNow).MayRun(task));
     }
 
-    private static ScheduledTask NewTask() => new("Task", null, "Test", "{}", 5, null, 60, DateTime.UtcNow, null);
+    [Fact]
+    public void CompletedTask_ReactivatesWhenItsExecutionLimitIsRaisedOrRemoved()
+    {
+        var now = DateTime.UtcNow;
+        var task = new ScheduledTask("Task", null, "Test", "{}", 5, null, 60, 1, now, null);
+
+        Assert.True(task.RecordExecutionStarted(now));
+        Assert.Equal(ScheduledTaskStatus.Completed, task.Status);
+
+        task.UpdateDetails("Task", null, "Test", "{}", 5, null, 60, 2, now.AddMinutes(1), null);
+        Assert.Equal(ScheduledTaskStatus.Active, task.Status);
+        Assert.Equal(1, task.ExecutionCount);
+
+        Assert.True(task.RecordExecutionStarted(now.AddMinutes(1)));
+        Assert.Equal(ScheduledTaskStatus.Completed, task.Status);
+
+        task.UpdateDetails("Task", null, "Test", "{}", 5, null, 60, null, now.AddMinutes(2), null);
+        Assert.Equal(ScheduledTaskStatus.Active, task.Status);
+    }
+
+    private static ScheduledTask NewTask() => new("Task", null, "Test", "{}", 5, null, 60, null, DateTime.UtcNow, null);
 }

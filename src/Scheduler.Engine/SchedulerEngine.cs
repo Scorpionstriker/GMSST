@@ -8,6 +8,7 @@ using Scheduler.Application.Tasks;
 using Scheduler.Domain.Entities;
 using Scheduler.Domain.Enums;
 using Scheduler.Engine.Execution;
+using Scheduler.Engine.HealthMonitoring;
 using Scheduler.Extensibility.Events;
 
 namespace Scheduler.Engine;
@@ -39,6 +40,7 @@ public sealed class SchedulerEngine : IEngineControl
     private readonly TimeProvider _clock;
     private readonly ILogger<SchedulerEngine> _logger;
     private readonly IEngineInstanceLock _instanceLock;
+    private readonly ResourceHealthMonitor _healthMonitor;
     private readonly string _hostName;
 
     private readonly ConcurrentQueue<Guid> _idleWorkers = new();
@@ -51,7 +53,7 @@ public sealed class SchedulerEngine : IEngineControl
 
     internal SchedulerEngine(IUnitOfWorkFactory unitOfWorkFactory, ISettingsProvider settings, ITaskTypeRegistry registry, TaskExecutor executor,
         FailureRecorder failures, EngineSignal signal, ISchedulerEventPublisher events, ISchedulerLogger log, TimeProvider clock,
-        EngineOptions options, IEngineInstanceLock instanceLock, ILogger<SchedulerEngine> logger)
+        EngineOptions options, IEngineInstanceLock instanceLock, ResourceHealthMonitor healthMonitor, ILogger<SchedulerEngine> logger)
     {
         _unitOfWorkFactory = unitOfWorkFactory;
         _settings = settings;
@@ -64,6 +66,7 @@ public sealed class SchedulerEngine : IEngineControl
         _clock = clock;
         _logger = logger;
         _instanceLock = instanceLock;
+        _healthMonitor = healthMonitor;
         _hostName = options.ResolveHostName();
     }
 
@@ -300,6 +303,7 @@ public sealed class SchedulerEngine : IEngineControl
 
         await EnqueueDueAsync(settings, stop);
         await DispatchAsync(settings, stop);
+        await _healthMonitor.CheckAsync(stop);
         return await NextDelayAsync(maxSleep, stop);
     }
 
@@ -367,7 +371,12 @@ public sealed class SchedulerEngine : IEngineControl
     {
         var now = Now;
         await using var unitOfWork = _unitOfWorkFactory.Create();
-        await unitOfWork.Workers.MarkStaleAsStoppedAsync(now.AddSeconds(-settings.WorkerStaleSeconds), now, _hostName, cancellationToken);
+        var staleWorkers = await unitOfWork.Workers.MarkStaleAsStoppedAsync(now.AddSeconds(-settings.WorkerStaleSeconds), now, _hostName,
+            cancellationToken);
+        if (staleWorkers > 0)
+        {
+            await _healthMonitor.ReportStaleWorkersAsync(staleWorkers, cancellationToken);
+        }
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
         var expired = await unitOfWork.Queue.LockExpiredLeasesAsync(now, BatchSize, cancellationToken);

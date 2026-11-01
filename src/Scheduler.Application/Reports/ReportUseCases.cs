@@ -242,9 +242,10 @@ internal sealed class GenerateReportHandler(IReportQueries queries, ITaskQueries
         var perDay = shown.GroupBy(r => r.AttemptedAtUtc.Date).OrderBy(g => g.Key).TakeLast(31).ToList();
         var table = shown
             .Select(r => (Time: r.AttemptedAtUtc, Row: (IReadOnlyList<string?>)
-                [r.AttemptedAtUtc.ToString("yyyy-MM-dd HH:mm:ss", Invariant), r.Username, r.Succeeded ? "Sign-in succeeded" : "Sign-in failed", r.Reason]))
+                [r.AttemptedAtUtc.ToString("yyyy-MM-dd HH:mm:ss", Invariant), "Login and Security", r.Username,
+                    r.Succeeded ? "Sign-in succeeded" : "Sign-in failed", r.Reason]))
             .Concat(changes.Select(e => (Time: e.LoggedAtUtc, Row: (IReadOnlyList<string?>)
-                [e.LoggedAtUtc.ToString("yyyy-MM-dd HH:mm:ss", Invariant), e.User, e.Action, e.Message])))
+                [e.LoggedAtUtc.ToString("yyyy-MM-dd HH:mm:ss", Invariant), e.Application, e.User, e.Action, e.Message])))
             .OrderByDescending(r => r.Time)
             .Take(MaxDetailRows)
             .Select(r => r.Row)
@@ -263,7 +264,7 @@ internal sealed class GenerateReportHandler(IReportQueries queries, ITaskQueries
                 new("Successful", perDay.Select(g => (double)g.Count(r => r.Succeeded)).ToList(), "series-success"),
                 new("Failed", perDay.Select(g => (double)g.Count(r => !r.Succeeded)).ToList(), "series-failed")
             ]),
-            ["Time (UTC)", "User", "Event", "Details"],
+            ["Time (UTC)", "Application", "User", "Event", "Details"],
             table,
             truncated);
     }

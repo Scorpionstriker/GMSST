@@ -62,10 +62,12 @@ public static class DependencyInjection
         services.AddSingleton<IUnitOfWorkFactory, UnitOfWorkFactory>();
         services.AddSingleton<IRetentionStore, RetentionStore>();
         services.AddSingleton<IUserAccountStore, UserAccountStore>();
+        services.AddSingleton<ISchedulerNotifications, SchedulerNotificationStore>();
         services.AddSingleton<ITaskQueries, TaskQueries>();
         services.AddSingleton<IQueueQueries, QueueQueries>();
         services.AddSingleton<IExecutionQueries, ExecutionQueries>();
         services.AddSingleton<IReportQueries, ReportQueries>();
+        services.AddSingleton<IResourceHealthReader, ResourceHealthReader>();
 
         services.AddSingleton<CachedSettingsProvider>();
         services.AddSingleton<ISettingsProvider>(sp => sp.GetRequiredService<CachedSettingsProvider>());

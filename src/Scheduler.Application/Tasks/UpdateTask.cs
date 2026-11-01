@@ -59,7 +59,7 @@ internal sealed class UpdateTaskHandler(IUnitOfWorkFactory unitOfWorkFactory, IC
         unitOfWork.Tasks.SetOriginalVersion(task, command.Version);
 
         task.UpdateDetails(input.Name, input.Description, input.TaskType, input.Payload, input.Priority, input.MaxRetries,
-            input.TimeoutSeconds, now, currentUser.UserId);
+            input.TimeoutSeconds, input.MaxExecutions, now, currentUser.UserId);
 
         if (task.CurrentSchedule is null || TaskWriter.ToInput(task.CurrentSchedule) != input.Schedule)
         {

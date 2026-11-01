@@ -110,7 +110,9 @@ public sealed class SecurityTests(TestDatabase database) : IClassFixture<TestDat
 
         var report = await services.GetRequiredService<Scheduler.Application.Common.IQueryHandler<Scheduler.Application.Reports.GenerateReportQuery, Scheduler.Application.Reports.ReportResult>>()
             .HandleAsync(new Scheduler.Application.Reports.GenerateReportQuery(Scheduler.Application.Reports.ReportType.SecurityAudit, DateTime.UtcNow.AddHours(-1), DateTime.UtcNow.AddHours(1), null, null));
-        var events = report.Value!.Rows.Where(r => r[1] == "admin" && r[3]?.Contains("'audited'") == true).Select(r => r[2]).ToList();
+        var events = report.Value!.Rows.Where(r => r[1] == "Login and Security" && r[2] == "admin"
+                                                    && r[4]?.Contains("'audited'") == true)
+            .Select(r => r[3]).ToList();
         Assert.Contains("UserCreated", events);
         Assert.Contains("RoleChanged", events);
         Assert.Contains("UserDeactivated", events);

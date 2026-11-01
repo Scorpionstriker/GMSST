@@ -137,13 +137,36 @@ public sealed class TaskExecutor
             return null;
         }
 
+        if (!task.RecordExecutionStarted(now))
+        {
+            entry.Cancel();
+            await unitOfWork.SaveChangesAsync();
+            await _log.LogAsync(SchedulerLogLevel.Info, LogSources.Executor,
+                $"Queued run of '{task.Name}' was cancelled because it reached its execution limit.");
+            return null;
+        }
+
+        var completedByLimit = task.Status == ScheduledTaskStatus.Completed;
+        if (completedByLimit)
+        {
+            foreach (var waiting in await unitOfWork.Queue.GetWaitingForTaskAsync(task.Id))
+            {
+                waiting.Cancel();
+            }
+        }
+
         var execution = TaskExecution.Start(entry, workerId, now);
         unitOfWork.Executions.Add(execution);
         worker?.MarkBusy(execution.Id, now);
         await unitOfWork.SaveChangesAsync();
+        if (completedByLimit)
+        {
+            await _log.LogAsync(SchedulerLogLevel.Warning, LogSources.Executor,
+                $"Task '{task.Name}' reached its execution limit of {task.MaxExecutions} and was marked Completed; already-running executions will finish.");
+        }
 
         return new StartedRun(execution.Id, entry.Id, task.Id, task.Name, task.TaskType, task.Payload, task.TimeoutSeconds, entry.Attempt,
-            entry.TriggerType, entry.ScheduledTimeUtc);
+            entry.TriggerType, entry.ScheduledTimeUtc, entry.EventName, entry.EventSource, entry.EventDataJson);
     }
 
     private async Task<RunOutcome> RunHandlerAsync(StartedRun run, CancellationToken stopToken)
@@ -182,8 +205,27 @@ public sealed class TaskExecutor
                 return RunOutcome.Failed("InvalidPayload", "The task's payload is not valid JSON.", ex);
             }
 
+            JsonElement? eventData = null;
+            if (run.EventDataJson is { } eventDataJson)
+            {
+                try
+                {
+                    using var document = JsonDocument.Parse(eventDataJson);
+                    if (document.RootElement.ValueKind != JsonValueKind.Object)
+                    {
+                        return RunOutcome.Failed("InvalidEventData", "The event data is not a JSON object.");
+                    }
+
+                    eventData = document.RootElement.Clone();
+                }
+                catch (JsonException ex)
+                {
+                    return RunOutcome.Failed("InvalidEventData", "The event data is not valid JSON.", ex);
+                }
+            }
+
             var context = new TaskContext(run.TaskId, run.ExecutionId, run.TaskName, run.Attempt, run.TriggerType, run.ScheduledTimeUtc,
-                payload, logger, scope.ServiceProvider, linked.Token);
+                payload, logger, scope.ServiceProvider, linked.Token, run.EventName, run.EventSource, eventData);
             handlerTask = Task.Run(() => handler.ExecuteAsync(context), CancellationToken.None);
         }
         finally
@@ -396,5 +438,8 @@ public sealed class TaskExecutor
         int TimeoutSeconds,
         int Attempt,
         TriggerType TriggerType,
-        DateTime ScheduledTimeUtc);
+        DateTime ScheduledTimeUtc,
+        string? EventName,
+        string? EventSource,
+        string? EventDataJson);
 }

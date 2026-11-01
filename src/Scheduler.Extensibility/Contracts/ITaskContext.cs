@@ -14,8 +14,17 @@ public interface ITaskContext
     /// <summary>0 for the first attempt, 1 for the first retry, and so on.</summary>
     int RetryNumber { get; }
 
-    /// <summary>Why the run happened: Scheduled, Manual, Retry, Dependency or CatchUp.</summary>
+    /// <summary>Why the run happened: Scheduled, Manual, Retry, Dependency, CatchUp or Event.</summary>
     TriggerType TriggerType { get; }
+
+    /// <summary>Name of the triggering event, for event-triggered runs.</summary>
+    string? EventName => null;
+
+    /// <summary>Module or application that raised the event, for event-triggered runs.</summary>
+    string? EventSource => null;
+
+    /// <summary>Event-specific JSON data, separate from the task's configured payload.</summary>
+    JsonElement? EventData => null;
 
     /// <summary>The time the run was planned for, in UTC.</summary>
     DateTime ScheduledTimeUtc { get; }

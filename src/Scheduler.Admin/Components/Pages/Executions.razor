@@ -7,6 +7,7 @@
 @inject IQueryHandler<ExportExecutionsQuery, CsvFile> Export
 @inject IQueryHandler<GetTaskLookupsQuery, IReadOnlyList<TaskLookup>> GetLookups
 @inject IFileSaver Files
+@inject IAuditLog Audit
 @inject ToastService Toasts
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -17,7 +18,7 @@
     <div class="actions no-print">
         <button class="btn" @onclick="ExportAsync" disabled="@_exporting">@(_exporting ? "Exporting…" : "Export CSV")</button>
         @* WP-8d (F-20): prints the rows shown, with the report print style. *@
-        <button class="btn" @onclick="() => Printer.PrintAsync(JS)">Print</button>
+        <button class="btn" @onclick="PrintAsync">Print</button>
     </div>
 </div>
 
@@ -233,6 +234,7 @@
             }
 
             var path = await Files.SaveAsync(result.Value!.FileName, result.Value.Content);
+            await Audit.RecordAsync("ExecutionHistoryExported", $"Execution history was exported as {result.Value.FileName}.", "Scheduler Admin");
             Toasts.Success($"Saved to {path}");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -251,4 +253,10 @@
         SchedulerLogLevel.Warning => "warning",
         _ => "info"
     };
+
+    private async Task PrintAsync()
+    {
+        await Printer.PrintAsync(JS);
+        await Audit.RecordAsync("ExecutionHistoryPrintRequested", "Execution history was sent to the print dialog.", "Scheduler Admin");
+    }
 }

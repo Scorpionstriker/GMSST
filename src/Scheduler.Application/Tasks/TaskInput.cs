@@ -16,6 +16,9 @@ public sealed record TaskInput
     public int? MaxRetries { get; init; }
 
     public int TimeoutSeconds { get; init; } = ScheduledTask.DefaultTimeoutSeconds;
+
+    /// <summary>Maximum number of started executions; null means no limit.</summary>
+    public int? MaxExecutions { get; init; }
     public ScheduleInput Schedule { get; init; } = new();
 
     /// <summary>Tasks that must succeed before this one is queued (FR-26).</summary>
@@ -46,6 +49,7 @@ public static class TaskFields
     public const string Priority = nameof(TaskInput.Priority);
     public const string MaxRetries = nameof(TaskInput.MaxRetries);
     public const string TimeoutSeconds = nameof(TaskInput.TimeoutSeconds);
+    public const string MaxExecutions = nameof(TaskInput.MaxExecutions);
     public const string Payload = nameof(TaskInput.Payload);
     public const string ScheduleType = "Schedule.Type";
     public const string CronExpression = "Schedule.CronExpression";

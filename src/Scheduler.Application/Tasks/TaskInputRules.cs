@@ -40,6 +40,9 @@ public static class TaskInputRules
         errors.AddIf(input.TimeoutSeconds is < 1 or > ScheduledTask.MaxTimeoutSeconds, TaskFields.TimeoutSeconds,
             "Timeout must be between 1 second and 24 hours.");
 
+        errors.AddIf(input.MaxExecutions is < 1 or > ScheduledTask.MaxExecutionsLimit, TaskFields.MaxExecutions,
+            $"Execution limit must be between 1 and {ScheduledTask.MaxExecutionsLimit:N0}.");
+
         var payloadError = ValidatePayload(input.Payload);
         if (payloadError is not null)
         {

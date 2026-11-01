@@ -25,6 +25,7 @@ public sealed class UserManagement(
     UserSession userSession,
     IAuditLog audit,
     ISettingsReader settings,
+    ISchedulerNotifications notifications,
     TimeProvider clock)
 {
     public const int UsernameMaxLength = 50;
@@ -41,13 +42,20 @@ public sealed class UserManagement(
     {
         if (await users.AnyUsersAsync(cancellationToken))
         {
+            await audit.RecordAsync("FirstDeveloperCreationRejected", "First Developer creation was rejected because an account already exists.",
+                "Login and Security", cancellationToken);
             return UserActionResult.Fail("A user account already exists. Sign in instead.");
         }
 
         var result = await CreateAsync(username, password, confirmation, UserRole.Developer, true, cancellationToken);
         if (result.Succeeded)
         {
-            await audit.RecordAsync("UserCreated", $"First Developer '{username.Trim()}' created.", cancellationToken);
+            await audit.RecordAsync("UserCreated", $"First Developer '{username.Trim()}' created.", "Login and Security", cancellationToken);
+        }
+        else
+        {
+            await audit.RecordAsync("FirstDeveloperCreationRejected", "First Developer creation was rejected by account validation.",
+                "Login and Security", cancellationToken);
         }
 
         return result;
@@ -76,7 +84,7 @@ public sealed class UserManagement(
         var result = await CreateAsync(username, password, confirmation, role, true, cancellationToken);
         if (result.Succeeded)
         {
-            await audit.RecordAsync("UserCreated", $"{Actor} created user '{username.Trim()}' with role {role}.", cancellationToken);
+            await audit.RecordAsync("UserCreated", $"{Actor} created user '{username.Trim()}' with role {role}.", "Login and Security", cancellationToken);
         }
         return result;
     }
@@ -90,6 +98,8 @@ public sealed class UserManagement(
     {
         if (!await users.AnyUsersAsync(cancellationToken))
         {
+            await audit.RecordAsync("RegistrationRejected",
+                "A registration attempt was rejected because no Developer account exists yet.", "Login and Security", cancellationToken);
             return UserActionResult.Fail("No administrator exists yet. Create the first administrator on the Login page instead.");
         }
 
@@ -97,7 +107,14 @@ public sealed class UserManagement(
         if (result.Succeeded)
         {
             await audit.RecordAsync("UserRegistered",
-                $"User '{username.Trim()}' registered and is waiting for an administrator to activate the account.", cancellationToken);
+                $"User '{username.Trim()}' registered and is waiting for an administrator to activate the account.",
+                "Login and Security", cancellationToken);
+            await NotifyAdministratorsAsync("Account awaiting activation",
+                $"User '{username.Trim()}' registered and is waiting for account activation.", cancellationToken);
+        }
+        else
+        {
+            await audit.RecordAsync("RegistrationRejected", "A registration attempt was rejected by account validation.", "Login and Security", cancellationToken);
         }
 
         return result;
@@ -114,11 +131,17 @@ public sealed class UserManagement(
         var code = RecoveryCode.Normalize(recoveryCode);
         if (PasswordPolicy.Validate(password, username) is { } policyError)
         {
+            await audit.RecordAsync("PasswordRecoveryRejected",
+                "A password recovery attempt was rejected because the proposed password did not meet policy.",
+                "Login and Security", cancellationToken);
             return UserActionResult.Fail(policyError, "Password");
         }
 
         if (password != confirmation)
         {
+            await audit.RecordAsync("PasswordRecoveryRejected",
+                "A password recovery attempt was rejected because the password confirmation did not match.",
+                "Login and Security", cancellationToken);
             return UserActionResult.Fail("The passwords do not match.", "Confirmation");
         }
 
@@ -157,10 +180,13 @@ public sealed class UserManagement(
         }
         catch (UserAccountConflictException)
         {
+            await users.AddLoginAuditAsync(new LoginAuditRecord(user.Id, username, false, "RecoveryConflict", now), cancellationToken);
             return UserActionResult.Fail("The account changed while the password was being reset. Try again.");
         }
 
-        await audit.RecordAsync("PasswordRecovered", $"'{user.Username}' set a new password with their recovery code.", cancellationToken);
+        await audit.RecordAsync("PasswordRecovered", $"'{user.Username}' set a new password with their recovery code.",
+            "Login and Security", cancellationToken);
+        await NotifyPasswordChangedAsync(user, cancellationToken);
         return UserActionResult.Ok with { RecoveryCode = newCode };
     }
 
@@ -179,7 +205,7 @@ public sealed class UserManagement(
 
         var code = SetRecoveryCode(user);
         await users.UpdateAsync(user, cancellationToken);
-        await audit.RecordAsync("RecoveryCodeCreated", $"'{user.Username}' created a new recovery code.", cancellationToken);
+        await audit.RecordAsync("RecoveryCodeCreated", $"'{user.Username}' created a new recovery code.", "Login and Security", cancellationToken);
         return UserActionResult.Ok with { RecoveryCode = code };
     }
 
@@ -282,7 +308,7 @@ public sealed class UserManagement(
 
         foreach (var (action, message) in changes)
         {
-            await audit.RecordAsync(action, message, cancellationToken);
+            await audit.RecordAsync(action, message, "Login and Security", cancellationToken);
         }
 
         return UserActionResult.Ok;
@@ -329,7 +355,8 @@ public sealed class UserManagement(
             return Changed;
         }
 
-        await audit.RecordAsync("PasswordReset", $"{Actor} reset the password of '{user.Username}'.", cancellationToken);
+        await audit.RecordAsync("PasswordReset", $"{Actor} reset the password of '{user.Username}'.", "Login and Security", cancellationToken);
+        await NotifyPasswordChangedAsync(user, cancellationToken);
         return UserActionResult.Ok;
     }
 
@@ -354,7 +381,8 @@ public sealed class UserManagement(
 
         SetPassword(user, password);
         await users.UpdateAsync(user, cancellationToken);
-        await audit.RecordAsync("PasswordChanged", $"'{user.Username}' changed their own password.", cancellationToken);
+        await audit.RecordAsync("PasswordChanged", $"'{user.Username}' changed their own password.", "Login and Security", cancellationToken);
+        await NotifyPasswordChangedAsync(user, cancellationToken);
         return UserActionResult.Ok;
     }
 
@@ -404,7 +432,8 @@ public sealed class UserManagement(
         }
 
         userSession.UpdateUsername(userId, username);
-        await audit.RecordAsync("UsernameChanged", $"'{oldUsername}' changed their username to '{username}'.", cancellationToken);
+        await audit.RecordAsync("UsernameChanged", $"'{oldUsername}' changed their username to '{username}'.",
+            "Login and Security", cancellationToken);
         return UserActionResult.Ok;
     }
 
@@ -472,6 +501,31 @@ public sealed class UserManagement(
         var hash = hasher.Hash(password);
         user.PasswordHash = hash.Hash;
         user.PasswordSalt = hash.Salt;
+    }
+
+    private async Task NotifyAdministratorsAsync(string title, string message, CancellationToken cancellationToken)
+    {
+        var administrators = await users.ListAsync(cancellationToken);
+        foreach (var administrator in administrators.Where(user =>
+                     user.IsActive && user.Role is UserRole.Administrator or UserRole.Developer))
+        {
+            await notifications.ScheduleAsync("Login and Security", administrator.Id, title, message,
+                cancellationToken: cancellationToken);
+        }
+    }
+
+    private async Task NotifyPasswordChangedAsync(UserAccount account, CancellationToken cancellationToken)
+    {
+        var recipients = (await users.ListAsync(cancellationToken))
+            .Where(user => user.IsActive && user.Role is UserRole.Administrator or UserRole.Developer)
+            .Select(user => user.Id)
+            .Append(account.Id)
+            .Distinct();
+        foreach (var recipient in recipients)
+        {
+            await notifications.ScheduleAsync("Login and Security", recipient, "Password changed",
+                $"The password for account '{account.Username}' was changed.", cancellationToken: cancellationToken);
+        }
     }
 
     private string SetRecoveryCode(UserAccount user)

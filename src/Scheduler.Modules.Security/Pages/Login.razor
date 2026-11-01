@@ -1,6 +1,7 @@
 @page "/login"
 @inject UserManagement Users
 @inject IAuthenticationProvider Authentication
+@inject IAuditLog Audit
 @inject UserSession Session
 @inject NavigationManager Navigation
 
@@ -126,6 +127,8 @@
         }
         catch (Exception)
         {
+            await Audit.RecordAsync("SignInUnavailable", "A sign-in attempt could not be completed because account storage was unavailable.",
+                "Login and Security");
             _message = "Signing in failed because the database cannot be reached.";
         }
         finally

@@ -1,0 +1,88 @@
+@page "/notifications"
+@inject ISchedulerNotifications NotificationClient
+
+<div class="page-header">
+    <h1>Notifications</h1>
+    <button class="btn" @onclick="LoadAsync">Refresh</button>
+</div>
+
+<ErrorBanner Message="@_error" />
+
+@if (_items is null)
+{
+    <p class="muted">Loading notifications...</p>
+}
+else if (_items.Count == 0)
+{
+    <div class="card"><p>You have no notifications.</p></div>
+}
+else
+{
+    <div class="card table-wrap">
+        <table class="table">
+            <thead><tr><th>When</th><th>Application</th><th>Notification</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var item in _items)
+                {
+                    <tr>
+                        <td>@Display.Time(item.DeliverAtUtc)</td>
+                        <td>@item.Source</td>
+                        <td>
+                            <strong>@item.Title</strong>
+                            @if (item.ReadAtUtc is null)
+                            {
+                                <span class="badge">New</span>
+                            }
+                            <div>@item.Message</div>
+                        </td>
+                        <td class="row-actions">
+                            @if (item.ReadAtUtc is null)
+                            {
+                                <button class="btn btn-small" @onclick="() => MarkReadAsync(item.Id)">Mark read</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<NotificationItem>? _items;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        try
+        {
+            _items = await NotificationClient.GetInboxAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Notifications could not be loaded: {ex.Message}";
+        }
+    }
+
+    private async Task MarkReadAsync(Guid id)
+    {
+        _error = null;
+        try
+        {
+            if (!await NotificationClient.MarkReadAsync(id))
+            {
+                _error = "This notification is no longer available. Refresh the list.";
+                return;
+            }
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"The notification could not be marked as read: {ex.Message}";
+        }
+    }
+}

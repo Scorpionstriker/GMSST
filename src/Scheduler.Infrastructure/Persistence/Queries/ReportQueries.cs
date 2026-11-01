@@ -164,7 +164,7 @@ internal sealed class ReportQueries(IDbContextFactory<SchedulerDbContext> contex
         return entries.Select(e => SecurityEvent(e.LoggedAtUtc, e.Message)).ToList();
     }
 
-    // The Database logging provider stores {"message": ..., "properties": {"action": ..., "user": ...}}.
+    // The Database logging provider stores {"message": ..., "properties": {"action": ..., "user": ..., "application": ...}}.
     internal static SecurityEventRow SecurityEvent(DateTime loggedAtUtc, string json)
     {
         try
@@ -172,19 +172,22 @@ internal sealed class ReportQueries(IDbContextFactory<SchedulerDbContext> contex
             using var document = System.Text.Json.JsonDocument.Parse(json);
             var root = document.RootElement;
             var message = root.TryGetProperty("message", out var m) ? m.GetString() ?? "" : "";
+            var application = "";
             var user = "";
             var action = "";
             if (root.TryGetProperty("properties", out var properties) && properties.ValueKind == System.Text.Json.JsonValueKind.Object)
             {
+                application = properties.TryGetProperty("application", out var applicationProperty) ? applicationProperty.ToString() : "";
                 user = properties.TryGetProperty("user", out var u) ? u.ToString() : "";
-                action = properties.TryGetProperty("action", out var a) ? a.ToString() : "";
+                action = properties.TryGetProperty("action", out var actionProperty) ? actionProperty.ToString() : "";
             }
 
-            return new SecurityEventRow(loggedAtUtc, user, action.Length == 0 ? "SecurityEvent" : action, message);
+            return new SecurityEventRow(loggedAtUtc, string.IsNullOrWhiteSpace(application) ? "Unknown" : application, user,
+                action.Length == 0 ? "SecurityEvent" : action, message);
         }
         catch (System.Text.Json.JsonException)
         {
-            return new SecurityEventRow(loggedAtUtc, "", "SecurityEvent", json);
+            return new SecurityEventRow(loggedAtUtc, "Unknown", "", "SecurityEvent", json);
         }
     }
 

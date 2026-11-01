@@ -9,7 +9,7 @@ internal static class TaskWriter
     public static ScheduledTask CreateTask(TaskInput input, DateTime nowUtc, Guid? userId)
     {
         var task = new ScheduledTask(input.Name, input.Description, input.TaskType, input.Payload, input.Priority, input.MaxRetries,
-            input.TimeoutSeconds, nowUtc, userId);
+            input.TimeoutSeconds, input.MaxExecutions, nowUtc, userId);
         task.SetSchedule(BuildSchedule(task.Id, input.Schedule, nowUtc, userId), nowUtc, userId);
         task.SetDependencies(input.DependsOn, nowUtc);
         return task;

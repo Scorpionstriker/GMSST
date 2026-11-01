@@ -44,7 +44,8 @@
                 <h3>Tasks</h3>
                 <p><StatusBadge Value="ScheduledTaskStatus.Active" /> runs on its schedule. <StatusBadge Value="ScheduledTaskStatus.Paused" /> does not run on
                     its schedule but can be run manually with <strong>Run now</strong>; that run keeps its retries. <StatusBadge Value="ScheduledTaskStatus.Disabled" />
-                    does not run at all, not even with Run now, until it is enabled.</p>
+                    does not run at all, not even with Run now, until it is enabled. <StatusBadge Value="ScheduledTaskStatus.Completed" />
+                    has reached its configured execution limit. Increase or remove that limit and save to resume it.</p>
                 <table class="table">
                     <thead><tr><th>From</th><th>Action</th><th>To</th><th>Effect on the queue and running work</th></tr></thead>
                     <tbody>

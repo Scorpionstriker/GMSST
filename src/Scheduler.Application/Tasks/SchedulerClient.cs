@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Scheduler.Application.Common;
 using Scheduler.Application.Common.Persistence;
 using Scheduler.Application.Cron;
@@ -66,6 +68,7 @@ internal sealed class SchedulerClient(
             Priority = definition.Priority,
             MaxRetries = definition.MaxRetries,
             TimeoutSeconds = definition.TimeoutSeconds,
+            MaxExecutions = definition.MaxExecutions,
             Schedule = new ScheduleInput
             {
                 Type = definition.ScheduleType,
@@ -103,7 +106,7 @@ internal sealed class SchedulerClient(
     {
         await using var unitOfWork = unitOfWorkFactory.Create();
         var task = await FindAsync(unitOfWork, taskNameOrSystemKey, cancellationToken);
-        if (task is null || task.Status == ScheduledTaskStatus.Disabled)
+        if (task is null || task.Status is ScheduledTaskStatus.Disabled or ScheduledTaskStatus.Completed)
         {
             return false;
         }
@@ -112,6 +115,50 @@ internal sealed class SchedulerClient(
         unitOfWork.Queue.Add(QueueEntry.Create(task, null, TriggerType.Manual, now, 0, now));
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
+        events.Publish(new SchedulerEvent(SchedulerEventKind.TaskQueued, new TaskLifecycleEventArgs(task.Id, task.Name, task.TaskType, null, now)));
+        engine.Wake();
+        return true;
+    }
+
+    public async Task<bool> TriggerEventAsync(string taskSystemKey, string eventName, string eventSource, string eventDataJson,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(taskSystemKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventSource);
+        ArgumentNullException.ThrowIfNull(eventDataJson);
+        if (eventName.Trim().Length > 100 || eventSource.Trim().Length > 100)
+        {
+            throw new ArgumentException("Event name and source must not exceed 100 characters.");
+        }
+
+        if (Encoding.UTF8.GetByteCount(eventDataJson) > 64 * 1024)
+        {
+            throw new ArgumentException("Event data must not exceed 64 KiB.", nameof(eventDataJson));
+        }
+
+        using (var document = JsonDocument.Parse(eventDataJson))
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new ArgumentException("Event data must be a JSON object.", nameof(eventDataJson));
+            }
+        }
+
+        await using var unitOfWork = unitOfWorkFactory.Create();
+        var task = await unitOfWork.Tasks.FindBySystemKeyAsync(taskSystemKey.Trim(), cancellationToken);
+        if (task is not { IsDeleted: false, Status: ScheduledTaskStatus.Active })
+        {
+            return false;
+        }
+
+        var now = clock.GetUtcNow().UtcDateTime;
+        unitOfWork.Queue.Add(QueueEntry.Create(task, null, TriggerType.Event, now, 0, now, eventName.Trim(), eventSource.Trim(),
+            eventDataJson));
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        await log.LogAsync(SchedulerLogLevel.Info, LogSources.Engine, $"Event '{eventName.Trim()}' from '{eventSource.Trim()}' queued task '{task.Name}'.",
+            properties: new Dictionary<string, object?> { ["taskId"] = task.Id, ["taskType"] = task.TaskType },
+            cancellationToken: cancellationToken);
         events.Publish(new SchedulerEvent(SchedulerEventKind.TaskQueued, new TaskLifecycleEventArgs(task.Id, task.Name, task.TaskType, null, now)));
         engine.Wake();
         return true;
@@ -128,7 +175,7 @@ internal sealed class SchedulerClient(
         await using var unitOfWork = unitOfWorkFactory.Create();
         var task = await FindAsync(unitOfWork, taskNameOrSystemKey, cancellationToken);
         var target = active ? ScheduledTaskStatus.Active : ScheduledTaskStatus.Paused;
-        if (task is null || task.Status == ScheduledTaskStatus.Disabled)
+        if (task is null || task.Status is ScheduledTaskStatus.Disabled or ScheduledTaskStatus.Completed)
         {
             return false;
         }

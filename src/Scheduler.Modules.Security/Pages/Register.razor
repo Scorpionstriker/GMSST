@@ -1,5 +1,6 @@
 @page "/login/register"
 @inject UserManagement Users
+@inject IAuditLog Audit
 
 @* Self-registration. The account is an inactive Viewer until an administrator activates it on the Users page. *@
 <div class="login-screen">
@@ -64,6 +65,8 @@
         }
         catch (Exception)
         {
+            await Audit.RecordAsync("RegistrationUnavailable", "A registration attempt could not be completed because account storage was unavailable.",
+                "Login and Security");
             _result = UserActionResult.Fail("Registering failed because the database cannot be reached.");
         }
         finally

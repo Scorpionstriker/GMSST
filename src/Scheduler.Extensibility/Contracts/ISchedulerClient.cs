@@ -18,6 +18,14 @@ public interface ISchedulerClient
     Task<Guid> EnsureTaskAsync(TaskDefinition definition, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Queues an event-triggered run for the task with this stable system key. Event data must be a JSON object no
+    /// larger than 64 KiB; the task's configured payload remains unchanged and is supplied separately to the handler.
+    /// Returns false when no active task has the key.
+    /// </summary>
+    Task<bool> TriggerEventAsync(string taskSystemKey, string eventName, string eventSource, string eventDataJson,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Queues an immediate run of the task with this system key or, if none has it, this name. Returns false when no
     /// runnable task matches.
     /// </summary>
@@ -49,6 +57,7 @@ public sealed record TaskDefinition
     public int Priority { get; init; } = 5;
     public int? MaxRetries { get; init; }
     public int TimeoutSeconds { get; init; } = 300;
+    public int? MaxExecutions { get; init; }
 
     public ScheduleType ScheduleType { get; init; } = ScheduleType.Cron;
     public string? CronExpression { get; init; }

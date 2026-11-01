@@ -2,6 +2,7 @@
 @inject InventoryStore Store
 @inject ISchedulerClient Scheduler
 @inject ICurrentUser CurrentUser
+@inject IAuditLog Audit
 
 <div class="page-header">
     <h1>Low-stock list</h1>
@@ -68,9 +69,13 @@
 
     private async Task RunNowAsync()
     {
-        _notice = await Scheduler.RunNowAsync("Inventory: low-stock check")
+        var queued = await Scheduler.RunNowAsync("Inventory: low-stock check");
+        _notice = queued
             ? "The low-stock check has been queued. Select Refresh in a moment to see the result."
             : "The low-stock check task was not found or is disabled.";
+        await Audit.RecordAsync(queued ? "InventoryLowStockCheckQueued" : "InventoryLowStockCheckQueueFailed",
+            queued ? "The low-stock check was manually queued." : "A manual low-stock check could not be queued because its task was missing or disabled.",
+            "Inventory Monitor");
     }
 
     private sealed record LowStockDetails(IReadOnlyList<LowStockLine> Items);

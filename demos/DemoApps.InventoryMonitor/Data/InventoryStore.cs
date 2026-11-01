@@ -18,10 +18,11 @@ public sealed record LowStockLine(string Sku, string Name, int QuantityOnHand, i
 /// <summary>
 /// The module's own data, in the "inventory" schema of its own database inventory_demo (FR-78, WP-1). The connection
 /// comes from <see cref="IModuleDatabases"/> and the "Inventory" configuration section, so the module needs no reference
-/// to the scheduler's data layer and never writes to the scheduler's database. Changes to products and stock need
+/// to the scheduler's data layer. Product data stays in inventory_demo; user actions are recorded through the scheduler's
+/// audit contract. Changes to products and stock need
 /// the Administrator role (WP-4). All SQL is parameterised (Phase 4, Section 8.4).
 /// </summary>
-public sealed class InventoryStore(IModuleDatabases databases, ICurrentUser currentUser)
+public sealed class InventoryStore(IModuleDatabases databases, ICurrentUser currentUser, IAuditLog audit)
 {
     public const string ConfigurationSection = "Inventory";
     public const string DefaultDatabaseName = "inventory_demo";
@@ -149,6 +150,12 @@ public sealed class InventoryStore(IModuleDatabases databases, ICurrentUser curr
             return "Price, quantity and reorder level cannot be negative.";
         }
 
+        var existing = id is { } existingId ? await GetProductAsync(existingId, cancellationToken) : null;
+        if (id is not null && existing is null)
+        {
+            return "The product no longer exists.";
+        }
+
         await using var command = DataSource.CreateCommand(id is null
             ? "INSERT INTO inventory.product (product_id, sku, name, unit_price, quantity_on_hand, reorder_level) VALUES (@id, @sku, @name, @price, @qty, @reorder)"
             : "UPDATE inventory.product SET sku = @sku, name = @name, unit_price = @price, quantity_on_hand = @qty, reorder_level = @reorder, updated_at = now() WHERE product_id = @id");
@@ -160,7 +167,16 @@ public sealed class InventoryStore(IModuleDatabases databases, ICurrentUser curr
         Add(command, "reorder", reorderLevel);
         try
         {
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            {
+                return "The product no longer exists.";
+            }
+
+            var action = id is null ? "InventoryProductCreated" : "InventoryProductUpdated";
+            var prior = existing is null ? "" : $" Previously SKU '{existing.Sku}' was named '{existing.Name}'.";
+            await audit.RecordAsync(action,
+                $"Product '{sku}' ({name}) was {(id is null ? "created" : "updated")}.{prior} Quantity {quantity}, reorder level {reorderLevel}, unit price {unitPrice.ToString("0.00", CultureInfo.InvariantCulture)}.",
+                "Inventory Monitor", cancellationToken);
             return null;
         }
         catch (DbException ex) when (ex.SqlState == "23505")
@@ -177,11 +193,25 @@ public sealed class InventoryStore(IModuleDatabases databases, ICurrentUser curr
             return AdministratorOnly;
         }
 
+        var product = await GetProductAsync(id, cancellationToken);
+        if (product is null)
+        {
+            return "The product no longer exists.";
+        }
+
         await using var command = DataSource.CreateCommand(
             "UPDATE inventory.product SET quantity_on_hand = quantity_on_hand + @change, updated_at = now() WHERE product_id = @id AND quantity_on_hand + @change >= 0");
         Add(command, "id", id);
         Add(command, "change", change);
-        return await command.ExecuteNonQueryAsync(cancellationToken) == 1 ? null : "There is not enough stock to remove that quantity.";
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+        {
+            return "There is not enough stock to remove that quantity.";
+        }
+
+        await audit.RecordAsync("InventoryStockAdjusted",
+            $"Stock for product '{product.Sku}' was adjusted by {change.ToString("+0;-0;0", CultureInfo.InvariantCulture)} to {product.QuantityOnHand + change}.",
+            "Inventory Monitor", cancellationToken);
+        return null;
     }
 
     /// <summary>Deletes a product. Returns an error message or null.</summary>
@@ -192,10 +222,34 @@ public sealed class InventoryStore(IModuleDatabases databases, ICurrentUser curr
             return AdministratorOnly;
         }
 
+        var product = await GetProductAsync(id, cancellationToken);
+        if (product is null)
+        {
+            return "The product no longer exists.";
+        }
+
         await using var command = DataSource.CreateCommand("DELETE FROM inventory.product WHERE product_id = @id");
         Add(command, "id", id);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+        {
+            return "The product no longer exists.";
+        }
+
+        await audit.RecordAsync("InventoryProductDeleted", $"Product '{product.Sku}' ({product.Name}) was deleted.",
+            "Inventory Monitor", cancellationToken);
         return null;
+    }
+
+    private async Task<Product?> GetProductAsync(Guid id, CancellationToken cancellationToken)
+    {
+        await using var command = DataSource.CreateCommand(
+            "SELECT product_id, sku, name, unit_price, quantity_on_hand, reorder_level, updated_at FROM inventory.product WHERE product_id = @id");
+        Add(command, "id", id);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new Product(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetDecimal(3), reader.GetInt32(4),
+                reader.GetInt32(5), reader.GetDateTime(6))
+            : null;
     }
 
     /// <summary>

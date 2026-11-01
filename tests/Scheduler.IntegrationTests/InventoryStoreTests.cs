@@ -25,12 +25,24 @@ public sealed class InventoryStoreTests(TestDatabase database) : IClassFixture<T
 
         var products = await store.GetProductsAsync();
         Assert.Equal(8, products.Count);
-        Assert.Equal(InventoryStore.AdministratorOnly, await store.SaveProductAsync(null, "NEW", "New product", 1, 1, 1));
-        Assert.Equal(InventoryStore.AdministratorOnly, await store.AdjustStockAsync(products[0].Id, 1));
-        Assert.Equal(InventoryStore.AdministratorOnly, await store.DeleteProductAsync(products[0].Id));
+        const string AdministratorOnly = "Only an administrator can change products and stock.";
+        Assert.Equal(AdministratorOnly, await store.SaveProductAsync(null, "NEW", "New product", 1, 1, 1));
+        Assert.Equal(AdministratorOnly, await store.AdjustStockAsync(products[0].Id, 1));
+        Assert.Equal(AdministratorOnly, await store.DeleteProductAsync(products[0].Id));
 
-        var admin = CreateStore(new FixedUser(UserRole.Administrator));
-        Assert.Null(await admin.AdjustStockAsync(products[0].Id, 1));
+        var audit = new CapturingAuditLog();
+        var admin = CreateStore(new FixedUser(UserRole.Administrator), audit);
+        var sku = "AUDIT-" + Guid.NewGuid().ToString("N")[..12].ToUpperInvariant();
+        Assert.Null(await admin.SaveProductAsync(null, sku, "Audit test product", 1, 2, 1));
+        var created = (await admin.GetProductsAsync()).Single(product => product.Sku == sku);
+        Assert.Null(await admin.SaveProductAsync(created.Id, sku + "-EDIT", "Updated audit test product", 2, 3, 1));
+        Assert.Null(await admin.AdjustStockAsync(created.Id, 1));
+        Assert.Null(await admin.DeleteProductAsync(created.Id));
+        Assert.All(audit.Entries, entry => Assert.Equal("Inventory Monitor", entry.Application));
+        Assert.Contains(audit.Entries, entry => entry.Action == "InventoryProductCreated");
+        Assert.Contains(audit.Entries, entry => entry.Action == "InventoryProductUpdated");
+        Assert.Contains(audit.Entries, entry => entry.Action == "InventoryStockAdjusted");
+        Assert.Contains(audit.Entries, entry => entry.Action == "InventoryProductDeleted");
     }
 
     [SkippableFact]
@@ -50,7 +62,7 @@ public sealed class InventoryStoreTests(TestDatabase database) : IClassFixture<T
         Assert.Single(reports, r => r.Id == first.Id);
     }
 
-    private InventoryStore CreateStore(ICurrentUser user)
+    private InventoryStore CreateStore(ICurrentUser user, IAuditLog? audit = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Inventory:Name"] = database.Options.Name })
@@ -58,8 +70,26 @@ public sealed class InventoryStoreTests(TestDatabase database) : IClassFixture<T
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSchedulerInfrastructure(new DatabaseConnection(database.Options, TestDatabase.Password), configuration);
+        services.AddSingleton<IAuditLog>(audit ?? new CapturingAuditLog());
         var provider = services.BuildServiceProvider();
-        return new InventoryStore(provider.GetRequiredService<IModuleDatabases>(), user);
+        return new InventoryStore(provider.GetRequiredService<IModuleDatabases>(), user, provider.GetRequiredService<IAuditLog>());
+    }
+
+    private sealed class CapturingAuditLog : IAuditLog
+    {
+        public List<(string Action, string Message, string Application)> Entries { get; } = [];
+
+        public Task RecordAsync(string action, string message, CancellationToken cancellationToken = default)
+        {
+            Entries.Add((action, message, "Unknown"));
+            return Task.CompletedTask;
+        }
+
+        public Task RecordAsync(string action, string message, string application, CancellationToken cancellationToken = default)
+        {
+            Entries.Add((action, message, application));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FixedUser(UserRole role) : ICurrentUser

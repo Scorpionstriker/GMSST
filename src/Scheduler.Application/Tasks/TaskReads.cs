@@ -21,7 +21,8 @@ public sealed record TaskDetails(
     DateTime? UpdatedAtUtc,
     DateTime? NextRunUtc,
     DateTime? LastRunUtc,
-    bool IsBuiltIn = false);
+    bool IsBuiltIn = false,
+    int ExecutionCount = 0);
 
 /// <summary>The registered task types for the task type drop-down (FR-06, FR-76).</summary>
 public sealed record GetTaskTypesQuery;
@@ -62,12 +63,13 @@ internal sealed class GetTaskHandler(IUnitOfWorkFactory unitOfWorkFactory) : IQu
             Priority = task.Priority,
             MaxRetries = task.MaxRetries,
             TimeoutSeconds = task.TimeoutSeconds,
+            MaxExecutions = task.MaxExecutions,
             Schedule = TaskWriter.ToInput(schedule),
             DependsOn = task.Dependencies.Select(d => d.DependsOnTaskId).ToList()
         };
 
         return Result.Success(new TaskDetails(task.Id, task.Version, input, task.Status, task.IsDeleted, task.CreatedAtUtc, task.UpdatedAtUtc,
-            schedule?.NextRunTimeUtc, schedule?.LastRunTimeUtc, task.IsBuiltIn));
+            schedule?.NextRunTimeUtc, schedule?.LastRunTimeUtc, task.IsBuiltIn, task.ExecutionCount));
     }
 }
 

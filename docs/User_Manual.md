@@ -26,7 +26,8 @@ wrong. If you have no recovery code, ask an administrator to reset your password
 
 | Role | Can do |
 |---|---|
-| Administrator | Everything: create, edit and delete tasks, run, pause and cancel, change configuration, back up and restore, manage users, change Inventory data |
+| Developer | Developer super-admin: full access, including the developer login bypass |
+| Administrator | Full scheduler and module administration: create, edit and delete tasks, run, pause and cancel, change configuration, back up and restore, manage users, change Inventory data |
 | Viewer | Read every monitoring page, reports and Help; cannot change anything. Configuration, Backup and restore and Users are hidden |
 
 > Screenshot placeholder: sign-in page.
@@ -45,7 +46,7 @@ Administrators can **Pause engine** (no new work is claimed; running tasks finis
 
 ## 3. Tasks
 
-The task list shows every task with its type, schedule, status and next run. Use **Search** and the status filter
+The task list shows every task with its type, schedule, status, next run and execution count. Use **Search** and the status filter
 to find tasks. Badges show **Built-in** tasks (created by the scheduler or a module; they can be edited, paused and
 renamed but not deleted) and **No handler** (no installed module provides the task type, so it will not run).
 
@@ -58,6 +59,10 @@ Actions for administrators:
 | Resume / Enable | Makes the task Active again |
 | Disable | Switches the task off completely, including Run now and retries |
 | Delete | Asks for confirmation; hidden for built-in tasks. Deleted tasks can be restored from the list |
+
+An optional **Maximum executions** cap counts every started run, including scheduled, manual, event-triggered and retry
+runs. At the cap, the task becomes **Completed**, waiting entries are cancelled, and already-running work finishes.
+Increase or clear the cap in the editor and save to resume the task.
 
 > Screenshot placeholder: task list.
 
@@ -74,6 +79,7 @@ Actions for administrators:
 | If runs were missed | Skip, Run once, or Run all (up to RunAllMisfireCap) for runs more than 60 seconds late |
 | Priority | 1 = highest, 10 = lowest. Higher priority runs first when several tasks are due |
 | Retries after a failure, Time-out (seconds) | Empty uses the global settings |
+| Maximum executions | Optional total cap across scheduled, manual, event-triggered and retry starts. The task becomes Completed at the limit; increase or remove the cap and save to resume it |
 | Depends on | Tasks that must succeed first; cycles are refused |
 | Payload (JSON) | Settings for the task type, as a JSON object |
 
@@ -113,7 +119,10 @@ Choose a report, a date range (up to 366 days) and optional filters, then view, 
 | Failures and errors | Failed and timed-out runs with their errors | Task, status |
 | Performance | Average, shortest and longest duration per task | Task, status |
 | Upcoming schedule | The next runs of active tasks | Task |
-| Security and audit | Sign-ins, lockouts, user changes and login bypass changes | Outcome (succeeded or failed) |
+| Security and audit | Sign-in attempts and lockouts; registration, password recovery, account and login-bypass changes; Inventory product and stock changes; report generation, export and print requests; manual Inventory checks and module start/stop actions | Application, user, event and details |
+
+Inventory task runs (stock reports, low-stock checks and weekly summaries), including manual runs, also appear in
+**Execution history** with their output and run logs. Passwords, recovery codes and keys are never written to audit entries.
 
 ## 9. Backup and restore (administrators)
 
@@ -136,6 +145,7 @@ The built-in **Database Backup** task backs up all three databases every night a
   **Save**. Values outside the range are refused with a message.
 - **Task overrides**: give one task its own retry limit or retry delays (**Add override**, **Use global value**).
 - **Logging providers**: switch Database, File, Console and module providers on or off and set the minimum level.
+- **Health monitoring**: set the check interval and thresholds for repeated failures, timeouts, queue backlog, scheduler CPU and memory. Alerts are written to the scheduler log and delivered in-app to active Administrators and Developers; monitoring never pauses scheduling.
 - **This computer**: folders for backups, the backup copy and logs, the PostgreSQL tools folder and the Maintenance
   Agent address. Only a Developer super-admin can see and change the developer login bypass. These are saved in the
   user settings file on this computer.
@@ -157,12 +167,20 @@ Admin application is stopped when the Admin application closes.
 If the Maintenance Agent is running when the Scheduler closes, the Scheduler asks before stopping it. Cancel leaves
 both applications running; **Stop Agent and Close** shuts down the agent before closing the Scheduler.
 
-## 12. Help
+## 12. Notifications
+
+The **Notifications** page shows delivered in-app messages for the signed-in account. Select **Mark read** to clear a
+new message. Integrated modules can create immediate or one-time scheduled notifications and cancel their own future
+notifications. There are no email or operating-system notifications. Pending registration notices go to active
+Administrators and Developers; successful password changes notify the account owner and all active Administrators
+and Developers.
+
+## 13. Help
 
 Getting started, cron syntax with examples, the task state table, priority and dependency rules, and what each
 status means.
 
-## 13. Inventory pages (demo app 1)
+## 14. Inventory pages (demo app 1)
 
 | Page | Use |
 |---|---|
@@ -172,7 +190,7 @@ status means.
 
 Changes need the Administrator role.
 
-## 14. Maintenance Agent page (demo app 2)
+## 15. Maintenance Agent page (demo app 2)
 
 **Managed apps > Maintenance Agent** shows whether the separate Maintenance Agent application is running, since
 when, its database, the last health check and the last clean-up. The health check tests the Scheduler and Inventory

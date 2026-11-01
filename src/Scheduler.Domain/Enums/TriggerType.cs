@@ -7,5 +7,6 @@ public enum TriggerType
     Manual = 2,
     Retry = 3,
     Dependency = 4,
-    CatchUp = 5
+    CatchUp = 5,
+    Event = 6
 }

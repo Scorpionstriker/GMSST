@@ -9,6 +9,7 @@ using Scheduler.Engine.Events;
 using Scheduler.Engine.Execution;
 using Scheduler.Engine.Handlers;
 using Scheduler.Engine.Hosting;
+using Scheduler.Engine.HealthMonitoring;
 using Scheduler.Extensibility.Contracts;
 using Scheduler.Extensibility.Events;
 
@@ -26,6 +27,10 @@ public static class DependencyInjection
         services.AddSingleton(options);
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IEngineInstanceLock, NoEngineInstanceLock>();
+        services.TryAddSingleton<IResourceHealthReader, EmptyResourceHealthReader>();
+        services.TryAddSingleton<IUserAccountStore, EmptyUserAccountStore>();
+        services.TryAddSingleton<ISchedulerNotifications, UnavailableSchedulerNotifications>();
+        services.AddSingleton<ResourceHealthMonitor>();
 
         services.AddSingleton<EngineSignal>();
         services.Replace(ServiceDescriptor.Singleton<IEngineSignal>(sp => sp.GetRequiredService<EngineSignal>()));
@@ -57,6 +62,7 @@ public static class DependencyInjection
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<EngineOptions>(),
             sp.GetRequiredService<IEngineInstanceLock>(),
+            sp.GetRequiredService<ResourceHealthMonitor>(),
             sp.GetRequiredService<ILogger<SchedulerEngine>>()));
         services.AddSingleton<IEngineControl>(sp => sp.GetRequiredService<SchedulerEngine>());
         services.AddSingleton<SchedulerHost>();

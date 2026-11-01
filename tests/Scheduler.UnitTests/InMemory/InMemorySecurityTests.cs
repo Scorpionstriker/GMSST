@@ -73,6 +73,27 @@ public class InMemorySecurityTests
     }
 
     [Fact]
+    public async Task RegistrationAndPasswordChanges_CreateInAppNotificationsForTheRequiredUsers()
+    {
+        await using var host = CreateHost();
+        var management = host.Get<UserManagement>();
+        Assert.True((await management.CreateFirstDeveloperAsync("admin", Password, Password)).Succeeded);
+        var developer = (await management.ListAsync()).Single();
+
+        Assert.True((await management.RegisterAsync("newviewer", Password, Password)).Succeeded);
+        Assert.Contains(host.Notifications.Items, entry => entry.UserId == developer.Id
+            && entry.Item.Title == "Account awaiting activation");
+
+        var viewer = (await management.ListAsync()).Single(user => user.Username == "newviewer");
+        Assert.True((await host.Get<IAuthenticationProvider>().SignInAsync("admin", Password)).Succeeded);
+        Assert.True((await management.UpdateUserAsync(viewer.Id, UserRole.Viewer, true, viewer.Version)).Succeeded);
+        Assert.True((await host.Get<IAuthenticationProvider>().SignInAsync("newviewer", Password)).Succeeded);
+        Assert.True((await management.ChangeOwnPasswordAsync(Password, "New password 77", "New password 77")).Succeeded);
+        Assert.Contains(host.Notifications.Items, entry => entry.UserId == viewer.Id && entry.Item.Title == "Password changed");
+        Assert.Contains(host.Notifications.Items, entry => entry.UserId == developer.Id && entry.Item.Title == "Password changed");
+    }
+
+    [Fact]
     public async Task User_CanChangeOwnUsernameAfterEnteringCurrentPassword()
     {
         await using var host = await SignedInAdministratorAsync();
@@ -128,6 +149,7 @@ public class InMemorySecurityTests
         Assert.Contains("RoleChanged", actions);
         Assert.Contains("UserDeactivated", actions);
         Assert.Contains("PasswordReset", actions);
+        Assert.All(security, entry => Assert.Equal("Login and Security", entry.Properties?["application"]));
         Assert.All(security, e => Assert.Equal("admin", e.Properties?["user"]));
         Assert.DoesNotContain(security, e => e.Message.Contains("Another password 9") || e.Message.Contains(Password));
     }
@@ -180,6 +202,28 @@ public class InMemorySecurityTests
         await using var host = CreateHost();
         Assert.False((await host.Get<UserManagement>().RegisterAsync("early", Password, Password)).Succeeded);
         Assert.True(await host.Get<UserManagement>().NeedsFirstDeveloperAsync());
+        Assert.Contains(host.Logger.Entries,
+            entry => entry.Source == LogSources.Security && entry.Properties?["action"] as string == "RegistrationRejected");
+    }
+
+    [Fact]
+    public async Task PasswordRecoveryValidationFailures_AreAuditedWithoutCredentials()
+    {
+        await using var host = CreateHost();
+        await host.Get<UserManagement>().CreateFirstDeveloperAsync("admin", Password, Password);
+        var users = host.Get<UserManagement>();
+
+        Assert.False((await users.RecoverPasswordAsync("admin", "RECOVERY-CODE", "short", "short")).Succeeded);
+        Assert.False((await users.RecoverPasswordAsync("admin", "RECOVERY-CODE", "New password 77", "Different password 88")).Succeeded);
+
+        var entries = host.Logger.Entries
+            .Where(entry => entry.Source == LogSources.Security
+                            && entry.Properties?["action"] as string == "PasswordRecoveryRejected")
+            .ToList();
+        Assert.Equal(2, entries.Count);
+        Assert.All(entries, entry => Assert.DoesNotContain("RECOVERY-CODE", entry.Message));
+        Assert.All(entries, entry => Assert.DoesNotContain("New password 77", entry.Message));
+        Assert.All(entries, entry => Assert.DoesNotContain("Different password 88", entry.Message));
     }
 
     [Fact]

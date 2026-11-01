@@ -70,6 +70,7 @@
                         <th><SortHeader TColumn="TaskSortColumn" Title="Name" Column="TaskSortColumn.Name" Current="_sort" Descending="_descending" Sort="SortAsync" /></th>
                         <th><SortHeader TColumn="TaskSortColumn" Title="Type" Column="TaskSortColumn.TaskType" Current="_sort" Descending="_descending" Sort="SortAsync" /></th>
                         <th>Schedule</th>
+                        <th>Executions</th>
                         <th><SortHeader TColumn="TaskSortColumn" Title="Status" Column="TaskSortColumn.Status" Current="_sort" Descending="_descending" Sort="SortAsync" /></th>
                         <th><SortHeader TColumn="TaskSortColumn" Title="Next run" Column="TaskSortColumn.NextRun" Current="_sort" Descending="_descending" Sort="SortAsync" /></th>
                         <th><SortHeader TColumn="TaskSortColumn" Title="Last run" Column="TaskSortColumn.LastRun" Current="_sort" Descending="_descending" Sort="SortAsync" /></th>
@@ -100,6 +101,7 @@
                                 }
                             </td>
                             <td>@ScheduleDescriber.Describe(task.ScheduleType, task.CronExpression, task.IntervalSeconds, task.TimeZoneId, task.StartTimeUtc)</td>
+                            <td>@task.ExecutionCount / @(task.MaxExecutions?.ToString() ?? "unlimited")</td>
                             <td>
                                 @if (task.IsDeleted)
                                 {
@@ -131,20 +133,20 @@
                                     }
                                     else
                                     {
-                                        <button class="btn btn-small" disabled="@(task.Status == ScheduledTaskStatus.Disabled)" title="Queue a run now"
+                                        <button class="btn btn-small" disabled="@(task.Status is ScheduledTaskStatus.Disabled or ScheduledTaskStatus.Completed)" title="Queue a run now"
                                                 @onclick="() => RunNowAsync(task)">Run now</button>
                                         @* WP-6 state table: Active -> Pause or Disable, Paused -> Resume or Disable, Disabled -> Enable. *@
                                         @if (task.Status == ScheduledTaskStatus.Active)
                                         {
                                             <button class="btn btn-small" @onclick="() => SetStatusAsync(task, ScheduledTaskStatus.Paused)">Pause</button>
                                         }
-                                        else
+                                        else if (task.Status is ScheduledTaskStatus.Paused or ScheduledTaskStatus.Disabled)
                                         {
                                             <button class="btn btn-small" @onclick="() => SetStatusAsync(task, ScheduledTaskStatus.Active)">
                                                 @(task.Status == ScheduledTaskStatus.Disabled ? "Enable" : "Resume")
                                             </button>
                                         }
-                                        @if (task.Status != ScheduledTaskStatus.Disabled)
+                                        @if (task.Status is not (ScheduledTaskStatus.Disabled or ScheduledTaskStatus.Completed))
                                         {
                                             <button class="btn btn-small" @onclick="() => SetStatusAsync(task, ScheduledTaskStatus.Disabled)">Disable</button>
                                         }

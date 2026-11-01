@@ -315,6 +315,65 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Scheduler.Domain.Entities.InAppNotification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("notification_id");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateTime>("DeliverAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deliver_at");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("message");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recipient_user_id");
+
+                    b.Property<DateTime?>("ReadAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipientUserId", "DeliverAtUtc")
+                        .HasDatabaseName("ix_notification_inbox")
+                        .HasFilter("cancelled_at IS NULL");
+
+                    b.HasIndex("Source", "DeliverAtUtc")
+                        .HasDatabaseName("ix_notification_source")
+                        .HasFilter("cancelled_at IS NULL");
+
+                    b.ToTable("in_app_notification", "scheduler");
+                });
+
             modelBuilder.Entity("Scheduler.Domain.Entities.LoginAudit", b =>
                 {
                     b.Property<Guid>("Id")
@@ -392,6 +451,21 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("is_manual_run");
 
+                    b.Property<string>("EventDataJson")
+                        .HasMaxLength(65536)
+                        .HasColumnType("character varying(65536)")
+                        .HasColumnName("event_data");
+
+                    b.Property<string>("EventName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("event_name");
+
+                    b.Property<string>("EventSource")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("event_source");
+
                     b.Property<int>("Priority")
                         .HasColumnType("integer")
                         .HasColumnName("priority");
@@ -447,7 +521,7 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_task_queue_queue_status", "queue_status IN ('Waiting', 'Claimed', 'Processed', 'Cancelled')");
 
-                            t.HasCheckConstraint("ck_task_queue_trigger_type", "trigger_type IN ('Scheduled', 'Manual', 'Retry', 'Dependency', 'CatchUp')");
+                            t.HasCheckConstraint("ck_task_queue_trigger_type", "trigger_type IN ('Scheduled', 'Manual', 'Retry', 'Dependency', 'CatchUp', 'Event')");
                         });
                 });
 
@@ -590,6 +664,16 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("is_deleted");
 
+                    b.Property<int>("ExecutionCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("execution_count");
+
+                    b.Property<int?>("MaxExecutions")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_executions");
+
                     b.Property<int?>("MaxRetries")
                         .HasColumnType("integer")
                         .HasColumnName("max_retries");
@@ -670,7 +754,11 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_task_priority", "priority BETWEEN 1 AND 10");
 
-                            t.HasCheckConstraint("ck_task_status", "status IN ('Active', 'Paused', 'Disabled')");
+                            t.HasCheckConstraint("ck_task_status", "status IN ('Active', 'Paused', 'Disabled', 'Completed')");
+
+                            t.HasCheckConstraint("ck_task_max_executions", "max_executions IS NULL OR (max_executions BETWEEN 1 AND 1000000)");
+
+                            t.HasCheckConstraint("ck_task_execution_count", "execution_count >= 0");
 
                             t.HasCheckConstraint("ck_task_timeout_seconds", "timeout_seconds > 0");
                         });
@@ -801,7 +889,7 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_task_execution_retry_count", "retry_count >= 0");
 
-                            t.HasCheckConstraint("ck_task_execution_trigger_type", "trigger_type IN ('Scheduled', 'Manual', 'Retry', 'Dependency', 'CatchUp')");
+                            t.HasCheckConstraint("ck_task_execution_trigger_type", "trigger_type IN ('Scheduled', 'Manual', 'Retry', 'Dependency', 'CatchUp', 'Event')");
                         });
                 });
 
@@ -991,6 +1079,16 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UpdatedById")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_task_updated_by");
+                });
+
+            modelBuilder.Entity("Scheduler.Domain.Entities.InAppNotification", b =>
+                {
+                    b.HasOne("Scheduler.Domain.Entities.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notification_recipient");
                 });
 
             modelBuilder.Entity("Scheduler.Domain.Entities.TaskDependency", b =>

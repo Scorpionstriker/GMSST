@@ -29,6 +29,9 @@ internal sealed class QueueEntryConfiguration : IEntityTypeConfiguration<QueueEn
         b.Property(x => x.ClaimedUntilUtc).HasColumnName("claimed_until");
         b.Property(x => x.Attempt).HasColumnName("attempt").HasDefaultValue(0);
         b.Property(x => x.IsManualRun).HasColumnName("is_manual_run").HasDefaultValue(false);
+        b.Property(x => x.EventName).HasColumnName("event_name").HasMaxLength(100);
+        b.Property(x => x.EventSource).HasColumnName("event_source").HasMaxLength(100);
+        b.Property(x => x.EventDataJson).HasColumnName("event_data").HasMaxLength(64 * 1024);
 
         b.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_task_queue_task");
         b.HasOne<Schedule>().WithMany().HasForeignKey(x => x.ScheduleId).OnDelete(DeleteBehavior.SetNull)

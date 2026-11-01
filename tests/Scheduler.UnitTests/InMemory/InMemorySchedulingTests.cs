@@ -1,4 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
 using Scheduler.Application.Common;
+using Scheduler.Application.Common.Persistence;
 using Scheduler.Application.Configuration;
 using Scheduler.Domain.Entities;
 using Scheduler.Domain.Enums;
@@ -78,6 +80,120 @@ public class InMemorySchedulingTests
         Assert.True(host.TaskOf(taskId).CanChangeStatusTo(ScheduledTaskStatus.Disabled));
         host.TaskOf(taskId).Disable(DateTime.UtcNow, null);
         Assert.False(await host.Get<ISchedulerClient>().RunNowAsync(host.NameOf(taskId)));
+    }
+
+    [Fact]
+    public async Task ExecutionLimit_CompletesTaskAfterTheConfiguredNumberOfStartedRuns()
+    {
+        await using var host = new InMemoryHost();
+        host.SetSetting(SettingKeys.MaxConcurrency, 1);
+        var client = host.Get<ISchedulerClient>();
+        var taskId = await client.EnsureTaskAsync(new TaskDefinition
+        {
+            Name = "Limited task",
+            TaskType = CountingHandler.Type,
+            CronExpression = "0 0 1 1 *",
+            MaxExecutions = 2
+        });
+
+        Assert.True(await client.RunNowAsync("Limited task"));
+        Assert.True(await client.RunNowAsync("Limited task"));
+        Assert.True(await client.RunNowAsync("Limited task"));
+        await host.RunEngineAsync(() => InMemoryHost.WaitUntilAsync(
+            () => host.Statuses(taskId).Count == 2, "both allowed executions started"));
+
+        Assert.Equal(2, host.TaskOf(taskId).ExecutionCount);
+        Assert.Equal(ScheduledTaskStatus.Completed, host.TaskOf(taskId).Status);
+        Assert.False(await client.RunNowAsync("Limited task"));
+        Assert.DoesNotContain(host.Database.Queue, entry => entry.TaskId == taskId && entry.Status == QueueStatus.Waiting);
+        Assert.Contains(host.Database.Queue, entry => entry.TaskId == taskId && entry.Status == QueueStatus.Cancelled);
+    }
+
+    [Fact]
+    public async Task ExecutionLimit_CountsRetriesAndPreventsFurtherRetryStarts()
+    {
+        await using var host = new InMemoryHost();
+        host.SetSetting(SettingKeys.RetryBaseDelaySeconds, 1);
+        host.SetSetting(SettingKeys.RetryMaxDelaySeconds, 1);
+        var taskId = await host.Get<ISchedulerClient>().EnsureTaskAsync(new TaskDefinition
+        {
+            Name = "Limited failing task",
+            TaskType = FailingHandler.Type,
+            CronExpression = "0 0 1 1 *",
+            MaxRetries = 5,
+            MaxExecutions = 2
+        });
+
+        await host.RunEngineAsync(async () =>
+        {
+            Assert.True(await host.Get<ISchedulerClient>().RunNowAsync("Limited failing task"));
+            await InMemoryHost.WaitUntilAsync(() => host.Statuses(taskId).Count == 2, "the initial run and one retry started", Long);
+        });
+
+        Assert.Equal([ExecutionStatus.Retrying, ExecutionStatus.Failed], host.Statuses(taskId));
+        Assert.Equal(2, host.TaskOf(taskId).ExecutionCount);
+        Assert.Equal(ScheduledTaskStatus.Completed, host.TaskOf(taskId).Status);
+    }
+
+    [Fact]
+    public async Task EventTrigger_QueuesBySystemKeyAndPassesSeparateEventDataToHandler()
+    {
+        await using var host = new InMemoryHost();
+        var client = host.Get<ISchedulerClient>();
+        var taskId = await client.EnsureTaskAsync(new TaskDefinition
+        {
+            Name = "Event task",
+            SystemKey = "test.event-task",
+            TaskType = CountingHandler.Type,
+            CronExpression = "0 0 1 1 *",
+            Payload = """{"configured":"value"}"""
+        });
+
+        await host.RunEngineAsync(async () =>
+        {
+            Assert.True(await client.TriggerEventAsync("test.event-task", "product.updated", "Inventory Monitor",
+                """{"productId":"sku-1"}"""));
+            await InMemoryHost.WaitUntilAsync(() => host.Statuses(taskId).Count == 1, "the event-triggered execution completed");
+        });
+
+        var execution = Assert.Single(host.Database.Executions, item => item.TaskId == taskId);
+        Assert.Equal(TriggerType.Event, execution.TriggerType);
+        Assert.Equal(("product.updated", "Inventory Monitor", """{"productId":"sku-1"}""", """{"configured":"value"}"""),
+            CountingHandler.Events[execution.Id]);
+        Assert.False(await client.TriggerEventAsync("missing.key", "product.updated", "Inventory Monitor", "{}"));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            client.TriggerEventAsync("test.event-task", "product.updated", "Inventory Monitor", "[]"));
+        await Assert.ThrowsAnyAsync<System.Text.Json.JsonException>(() =>
+            client.TriggerEventAsync("test.event-task", "product.updated", "Inventory Monitor", "not-json"));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            client.TriggerEventAsync("test.event-task", "product.updated", "Inventory Monitor", new string('x', 65 * 1024)));
+    }
+
+    [Fact]
+    public async Task HealthMonitor_LogsAndNotifiesOnRepeatedTaskFailures()
+    {
+        await using var host = new InMemoryHost(services =>
+        {
+            new Scheduler.Modules.Security.SecurityModule().Register(services);
+            services.AddSingleton<IResourceHealthReader>(new FixedHealthReader(
+                new ResourceHealthSnapshot(0, 0, 0, 1, 0,
+                    [new TaskExecutionHealth(Guid.NewGuid(), "Repeated failure", 3, 0)])));
+        });
+        var users = host.Get<Scheduler.Modules.Security.Authentication.UserManagement>();
+        Assert.True((await users.CreateFirstDeveloperAsync("admin", "Correct horse 42", "Correct horse 42")).Succeeded);
+        var administratorId = (await users.ListAsync()).Single().Id;
+        host.SetSetting(SettingKeys.HealthFailureThreshold, 2);
+        host.SetSetting(SettingKeys.HealthTimeoutThreshold, 10);
+        host.SetSetting(SettingKeys.HealthQueueBacklogThreshold, 1000);
+        host.SetSetting(SettingKeys.HealthCpuPercentThreshold, 100);
+        host.SetSetting(SettingKeys.HealthMemoryMegabytesThreshold, 1_000_000);
+
+        await host.RunEngineAsync(() => InMemoryHost.WaitUntilAsync(
+            () => host.Logger.Entries.Any(entry => entry.Message.Contains("has 3 failures in the last 10 minutes.", StringComparison.Ordinal)),
+            "the repeated-failure health alert was logged"));
+
+        Assert.Contains(host.Notifications.Items, item => item.Item.Source == "Scheduler Health"
+            && item.Item.Title == "Scheduler health alert" && item.UserId == administratorId);
     }
 
     [Fact]
@@ -346,6 +462,7 @@ public class InMemoryDeliveryTests
                     failures[taskId] = left - 1;
                     throw new InvalidOperationException("Simulated database outage.");
                 }
+
             }
 
             return Task.CompletedTask;
@@ -392,4 +509,11 @@ public class InMemoryDeliveryTests
             await InMemoryHost.WaitUntilAsync(() => host.Statuses(taskId) is [ExecutionStatus.TimedOut], "the run timed out");
         });
     }
+
+}
+
+internal sealed class FixedHealthReader(ResourceHealthSnapshot snapshot) : IResourceHealthReader
+{
+    public Task<ResourceHealthSnapshot> GetSnapshotAsync(DateTime executionsSinceUtc, DateTime staleBeforeUtc,
+        CancellationToken cancellationToken = default) => Task.FromResult(snapshot);
 }

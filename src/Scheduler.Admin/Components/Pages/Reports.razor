@@ -4,6 +4,7 @@
 @inject IQueryHandler<GenerateReportQuery, ReportResult> Generate
 @inject IQueryHandler<GetTaskLookupsQuery, IReadOnlyList<TaskLookup>> GetLookups
 @inject IFileSaver Files
+@inject IAuditLog Audit
 @inject ToastService Toasts
 @inject IJSRuntime JS
 @inject PrintService Printer
@@ -174,6 +175,10 @@
             var result = await Generate.HandleAsync(query);
             _result = result;
             _report = result.Value;
+            if (result.IsSuccess)
+            {
+                await Audit.RecordAsync("ReportGenerated", $"{_report!.Title} generated ({_report.Parameters}).", "Scheduler Admin");
+            }
         }
         finally
         {
@@ -186,7 +191,9 @@
         var csv = _report!.ToCsv(_dates.From, _dates.To);
         try
         {
-            Toasts.Success("Saved to " + await Files.SaveAsync(csv.FileName, csv.Content));
+            var path = await Files.SaveAsync(csv.FileName, csv.Content);
+            await Audit.RecordAsync("ReportExported", $"{_report!.Title} exported as {csv.FileName}.", "Scheduler Admin");
+            Toasts.Success("Saved to " + path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -194,5 +201,9 @@
         }
     }
 
-    private Task PrintAsync() => Printer.PrintAsync(JS);
+    private async Task PrintAsync()
+    {
+        await Printer.PrintAsync(JS);
+        await Audit.RecordAsync("ReportPrintRequested", $"{_report!.Title} was sent to the print dialog.", "Scheduler Admin");
+    }
 }

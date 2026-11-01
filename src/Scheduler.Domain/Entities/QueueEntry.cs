@@ -14,7 +14,7 @@ public sealed class QueueEntry
     }
 
     private QueueEntry(Guid taskId, Guid? scheduleId, TriggerType triggerType, int priority, DateTime scheduledTimeUtc,
-        int attempt, DateTime nowUtc)
+        int attempt, DateTime nowUtc, string? eventName, string? eventSource, string? eventDataJson)
     {
         TaskId = taskId;
         ScheduleId = scheduleId;
@@ -25,12 +25,15 @@ public sealed class QueueEntry
         Status = QueueStatus.Waiting;
         Attempt = attempt;
         IsManualRun = triggerType == TriggerType.Manual;
+        EventName = eventName;
+        EventSource = eventSource;
+        EventDataJson = eventDataJson;
     }
 
     /// <summary>Creates a Waiting entry. The task's priority is copied so the claim query needs no join.</summary>
     public static QueueEntry Create(ScheduledTask task, Guid? scheduleId, TriggerType triggerType, DateTime scheduledTimeUtc,
-        int attempt, DateTime nowUtc) =>
-        new(task.Id, scheduleId, triggerType, task.Priority, scheduledTimeUtc, attempt, nowUtc);
+        int attempt, DateTime nowUtc, string? eventName = null, string? eventSource = null, string? eventDataJson = null) =>
+        new(task.Id, scheduleId, triggerType, task.Priority, scheduledTimeUtc, attempt, nowUtc, eventName, eventSource, eventDataJson);
 
     public Guid Id { get; private set; } = Guid.CreateVersion7();
     public Guid TaskId { get; private set; }
@@ -54,6 +57,10 @@ public sealed class QueueEntry
     /// <summary>True for a Run now entry and for the retries and re-queues that follow from it (WP-6).</summary>
     public bool IsManualRun { get; private set; }
 
+    public string? EventName { get; private set; }
+    public string? EventSource { get; private set; }
+    public string? EventDataJson { get; private set; }
+
     /// <summary>
     /// A retry or re-queue of this entry. It keeps the schedule and whether the run was started manually, so the retries
     /// of a manual run of a paused task still run (WP-6).
@@ -62,6 +69,9 @@ public sealed class QueueEntry
     {
         var next = Create(task, ScheduleId, triggerType, scheduledTimeUtc, attempt, nowUtc);
         next.IsManualRun = IsManualRun;
+        next.EventName = EventName;
+        next.EventSource = EventSource;
+        next.EventDataJson = EventDataJson;
         return next;
     }
 

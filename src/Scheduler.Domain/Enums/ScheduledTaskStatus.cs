@@ -5,5 +5,6 @@ public enum ScheduledTaskStatus
 {
     Active = 1,
     Paused = 2,
-    Disabled = 3
+    Disabled = 3,
+    Completed = 4
 }

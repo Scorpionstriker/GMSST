@@ -342,13 +342,16 @@ the Maintenance Agent running.
 | MC-15 | Managed apps > Maintenance Agent, Run health check now; stop the agent and run it again; start the agent | Status and the last check shown; with the agent stopped the run fails with "The Maintenance Agent is not running on port 5087." in the Error log | Not run yet |
 | MC-16 | Sign out; open a page; sign in as a Viewer; wait for the session time-out (set SessionTimeoutMinutes to 1 first). Then select Register, create an account, activate it on the Users page and sign in with it; sign out, select Forgot password? and set a new password with its recovery code | The login page is shown; a Viewer sees no Configuration, Backup or Users; the session ends after the time-out; the registered account shows Waiting for approval and signs in only after activation; the recovery code sets the new password once and a new code is shown | Not run yet |
 | MC-17 | With the Admin app running, start a second copy (for example a second build output folder). Queue 20 Run now runs of a short task in the first copy | The second copy shows "The scheduler engine is already running on …" and runs nothing; every run in the first copy has exactly one execution | Not run yet |
-| MC-18 | Drop and recreate an empty `gmss` with `database\setup_windows.ps1`, start the Admin app, then restart it. In psql try `INSERT INTO scheduler.task_queue (...)` with status `Bogus`, a schedule without a task, and a second task named in other letter case | 13 tables with UUID keys and seeded settings created once; each invalid insert is refused by a CHECK, foreign-key or unique constraint | Not run yet |
+| MC-18 | Drop and recreate an empty `gmss` with `database\setup_windows.ps1`, start the Admin app, then restart it. In psql try `INSERT INTO scheduler.task_queue (...)` with status `Bogus`, a schedule without a task, and a second task named in other letter case | 14 tables with UUID keys and seeded settings created once; each invalid insert is refused by a CHECK, foreign-key or unique constraint | Not run yet |
 | MC-19 | Backup and restore: back up two databases to a chosen folder with a copy folder set; damage one file of a set (change a byte) and try to restore it; set BackupRetentionCount to 2 and back up three times; restore the newest set on a second computer | Files verified and copied with matching checksums; the damaged set is refused; only two sets are kept; the second computer shows the same tasks and users | Not run yet |
 | MC-20 | Set a processed queue entry, an execution and a login audit row older than the retention periods with psql `UPDATE`, then Run now the Log Clean-up task | The old queue entry, history and audit are removed; an execution whose queue entry was purged stays with an empty queue reference | Not run yet |
 | MC-21 | Developer check: set the PostgreSQL tools folder to a wrong folder, add a new migration and start the Admin app | Start-up stops with the safety-backup message and the migration is not applied | Not run yet |
 | MC-22 | Open a task in the editor, change the same task with psql `UPDATE scheduler.task SET description = 'x'`, then Save in the editor | The editor reports that someone else changed the task | Not run yet |
 | MC-23 | Modules: Launch the Maintenance Agent, open Managed apps > Maintenance Agent, then Stop it there; Stop and Launch the Inventory Monitor; close the Admin app while the agent runs | The agent starts without a terminal and shows Running; Stop ends it; Inventory Stop pauses its three tasks and Launch resumes them and queues a stock report and a low-stock check; closing the Admin app ends the agent it launched | Not run yet |
 | MC-24 | Modules: switch the Inventory Monitor off, open the menu and an old link to /inventory/products, Run now an Inventory task; switch it on again; restart the Admin app with it off; try to switch Login and Security off | Its menu entries disappear, the link shows "Module switched off", the run waits in the Queue; after switching on, the run happens and the menu is back; after a restart it is still off; Login and Security cannot be switched off | Not run yet |
+| MC-25 | Create a task with Maximum executions = 1, queue two Run now requests, then edit the cap to 2 and save | Only one execution starts, the task becomes Completed, the other waiting entry is cancelled; increasing the cap resumes the task and allows one more execution | Not run yet |
+| MC-26 | Register an account; activate it; change its password as that user, then reset a password as an Administrator; open Notifications as the owner and an Administrator | Registration notices reach active Administrators and Developers; each successful password change notifies its owner and all active Administrators and Developers; each account sees only its own inbox | Not run yet |
+| MC-27 | Set HealthFailureThreshold to 2, run a failing task twice, and open the scheduler log and Notifications; restore the threshold after the check | A repeated-failure warning is logged and delivered in-app to active Administrators and Developers; the engine continues running. Also verify threshold settings for timeouts, backlog, CPU and memory | Not run yet |
 
 ## 4. Click-through checklist
 
@@ -360,15 +363,16 @@ Tick each one when it does what its label says.
 | Header and menu | Every menu entry; Sign out; theme switch | ☐ |
 | Dashboard | Pause engine, Resume engine, Refresh, a row in Recent executions | ☐ |
 | Tasks | New task, Search, status filter, Pause, Resume or Enable, Disable, Delete (confirm and cancel), Restore, a task name | ☐ |
-| Task editor | On a cron schedule, Every interval, Once, Use the example for this task type, dependency boxes, Save, Run now, Pause, Disable, Delete, Back to tasks | ☐ |
+| Task editor | On a cron schedule, Every interval, Once, Use the example for this task type, dependency boxes, execution limit, Save, Run now, Pause, Disable, Delete, Back to tasks | ☐ |
 | Queue | Waiting, Claimed, Waiting and claimed, Cancel (confirm and cancel), Refresh | ☐ |
 | Execution history | Apply, a row, Close, Print, Previous and Next page | ☐ |
 | Error log | Search, Apply, a row | ☐ |
-| Reports | Report list, From, To, Task, Status, Outcome, Export CSV, Print | ☐ |
+| Reports | Report list, From, To, Task, Status, Outcome, Export CSV, Print; verify generation, export and print-request events and their application identity in Security and audit | ☐ |
 | Backup and restore | Database boxes, Browse, Back up now, Restore (confirm with and without RESTORE), Refresh | ☐ |
-| Configuration | Change, Save, Cancel, Add override, Use global value, provider switches and levels, This computer Save | ☐ |
+| Configuration | Change, Save, Cancel, Add override, Use global value, provider switches and levels, health thresholds, This computer Save | ☐ |
 | Modules, Help | Links on the page | ☐ |
-| Users | Add user, Create user, Edit, Save (role and status changes, unlocking a locked account), Reset password, Deactivate (confirm and Keep active) | ☐ |
+| Notifications | Inbox, Mark read, Refresh | ☐ |
+| Users | Add user, Create user, Edit, Save (role and status changes, unlocking a locked account), Reset password, Deactivate (confirm and Keep active); verify registration and password recovery events in Security and audit | ☐ |
 | Account | Change username with an incorrect password, an existing username and a valid new username; verify that the signed-in name updates and the new username can sign in. Change password with a wrong and a right current password. | ☐ |
-| Inventory | Add product, Edit, Save, Delete (confirm and Keep), −1, +10, Refresh, Run check now | ☐ |
+| Inventory | Add product, Edit, Save, Delete (confirm and Keep), −1, +10, Refresh, Run check now; verify changes and manual check queueing in Security and audit, then verify the task run in Execution history | ☐ |
 | Maintenance Agent | Refresh, Run health check now | ☐ |

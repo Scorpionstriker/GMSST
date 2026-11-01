@@ -8,7 +8,7 @@ namespace DemoApps.InventoryMonitor;
 /// application, so launching it means starting its three scheduled tasks (and running a stock report and a low-stock
 /// check straight away, so the Inventory pages show fresh figures), and stopping it means pausing them.
 /// </summary>
-internal sealed class InventoryTasksControl(ISchedulerClient scheduler) : IManagedApplication
+internal sealed class InventoryTasksControl(ISchedulerClient scheduler, IAuditLog audit) : IManagedApplication
 {
     public string ModuleName => InventoryModule.ModuleName;
 
@@ -47,6 +47,8 @@ internal sealed class InventoryTasksControl(ISchedulerClient scheduler) : IManag
 
         await scheduler.RunNowAsync(InventoryModule.StockReportKey, cancellationToken);
         await scheduler.RunNowAsync(InventoryModule.LowStockCheckKey, cancellationToken);
+        await audit.RecordAsync("InventoryMonitorStarted",
+            "The Inventory Monitor was started; its stock report and low-stock check were queued.", "Inventory Monitor", cancellationToken);
         return ManagedApplicationResult.Success("The Inventory Monitor is running: its tasks are active and a stock report and low-stock check have been queued.");
     }
 
@@ -57,6 +59,8 @@ internal sealed class InventoryTasksControl(ISchedulerClient scheduler) : IManag
             await scheduler.SetTaskActiveAsync(key, false, cancellationToken);
         }
 
+        await audit.RecordAsync("InventoryMonitorStopped", "The Inventory Monitor scheduled tasks were paused.",
+            "Inventory Monitor", cancellationToken);
         return ManagedApplicationResult.Success("The Inventory Monitor is stopped: its scheduled tasks are paused. Its pages still show the last figures.");
     }
 }

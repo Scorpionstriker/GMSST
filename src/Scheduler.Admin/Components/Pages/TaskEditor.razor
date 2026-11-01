@@ -38,17 +38,17 @@
                 }
                 else
                 {
-                    <button class="btn" disabled="@(d.Status == ScheduledTaskStatus.Disabled)" @onclick="RunNowAsync">Run now</button>
+                    <button class="btn" disabled="@(d.Status is ScheduledTaskStatus.Disabled or ScheduledTaskStatus.Completed)" @onclick="RunNowAsync">Run now</button>
                     @* WP-6 state table: Active -> Pause or Disable, Paused -> Resume or Disable, Disabled -> Enable. *@
                     @if (d.Status == ScheduledTaskStatus.Active)
                     {
                         <button class="btn" @onclick="() => SetStatusAsync(ScheduledTaskStatus.Paused)">Pause</button>
                     }
-                    else
+                    else if (d.Status is ScheduledTaskStatus.Paused or ScheduledTaskStatus.Disabled)
                     {
                         <button class="btn" @onclick="() => SetStatusAsync(ScheduledTaskStatus.Active)">@(d.Status == ScheduledTaskStatus.Disabled ? "Enable" : "Resume")</button>
                     }
-                    @if (d.Status != ScheduledTaskStatus.Disabled)
+                    @if (d.Status is not (ScheduledTaskStatus.Disabled or ScheduledTaskStatus.Completed))
                     {
                         <button class="btn" @onclick="() => SetStatusAsync(ScheduledTaskStatus.Disabled)">Disable</button>
                     }
@@ -80,7 +80,12 @@ else
             Created @Display.Time(info.CreatedAtUtc) · last changed @Display.Time(info.UpdatedAtUtc ?? info.CreatedAtUtc)
             · next run @(info.Status == ScheduledTaskStatus.Active && !info.IsDeleted ? Display.Time(info.NextRunUtc) : Display.Empty)
             · last run @Display.Time(info.LastRunUtc)
+            · executions @info.ExecutionCount / @(_form.MaxExecutions?.ToString() ?? "unlimited")
         </p>
+    }
+    @if (_details?.Status == ScheduledTaskStatus.Completed)
+    {
+        <div class="banner banner-info">This task reached its execution limit and is complete. Increase or remove the limit and save to resume it.</div>
     }
     @if (ReadOnly && !CurrentUser.IsAdministrator)
     {
@@ -156,6 +161,12 @@ else
                     <label for="timeout">Time-out (seconds)</label>
                     <input id="timeout" type="number" min="1" max="86400" @bind="_form.TimeoutSeconds" @bind:after="() => Touch(TaskFields.TimeoutSeconds)" class="@Invalid(TaskFields.TimeoutSeconds)" />
                     <FieldError Result="Shown" Field="@TaskFields.TimeoutSeconds" />
+                </div>
+                <div class="field">
+                    <label for="max-executions">Maximum executions</label>
+                    <input id="max-executions" type="number" min="1" max="1000000" @bind="_form.MaxExecutions" @bind:after="() => Touch(TaskFields.MaxExecutions)" placeholder="Unlimited" class="@Invalid(TaskFields.MaxExecutions)" />
+                    <span class="hint">Counts every started run, including retries, manual runs and event-triggered runs. Leave empty for no limit.</span>
+                    <FieldError Result="Shown" Field="@TaskFields.MaxExecutions" />
                 </div>
             </div>
         </fieldset>
@@ -507,6 +518,7 @@ else
         public int Priority { get; set; }
         public int? MaxRetries { get; set; }
         public int TimeoutSeconds { get; set; }
+        public int? MaxExecutions { get; set; }
         public ScheduleType Type { get; set; }
         public string? CronExpression { get; set; }
         public int? IntervalValue { get; set; }
@@ -526,6 +538,7 @@ else
             Priority = input.Priority;
             MaxRetries = input.MaxRetries;
             TimeoutSeconds = input.TimeoutSeconds;
+            MaxExecutions = input.MaxExecutions;
             var s = input.Schedule;
             Type = s.Type;
             CronExpression = s.CronExpression;
@@ -564,6 +577,7 @@ else
             Priority = Priority,
             MaxRetries = MaxRetries,
             TimeoutSeconds = TimeoutSeconds,
+            MaxExecutions = MaxExecutions,
             Schedule = schedule,
             DependsOn = DependsOn.ToList()
         };

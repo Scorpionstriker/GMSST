@@ -20,6 +20,12 @@ public static class SettingKeys
     public const string RunAllMisfireCap = nameof(RunAllMisfireCap);
     public const string ShutdownGraceSeconds = nameof(ShutdownGraceSeconds);
     public const string WorkerStaleSeconds = nameof(WorkerStaleSeconds);
+    public const string HealthCheckIntervalSeconds = nameof(HealthCheckIntervalSeconds);
+    public const string HealthFailureThreshold = nameof(HealthFailureThreshold);
+    public const string HealthTimeoutThreshold = nameof(HealthTimeoutThreshold);
+    public const string HealthQueueBacklogThreshold = nameof(HealthQueueBacklogThreshold);
+    public const string HealthCpuPercentThreshold = nameof(HealthCpuPercentThreshold);
+    public const string HealthMemoryMegabytesThreshold = nameof(HealthMemoryMegabytesThreshold);
 }
 
 /// <summary>
@@ -67,7 +73,13 @@ public static class SettingDefinitions
         new(SettingKeys.LockoutMinutes, "How long a locked account stays locked.", 15, 1, 1440, "minutes"),
         new(SettingKeys.RunAllMisfireCap, "Most missed runs replayed by a schedule whose misfire policy is Run all.", 10, 1, 1000, "runs"),
         new(SettingKeys.ShutdownGraceSeconds, "Time running tasks are given to finish when the engine stops.", 30, 0, 600, "seconds"),
-        new(SettingKeys.WorkerStaleSeconds, "A worker without a heartbeat for this long is marked Stopped.", 120, 30, 3600, "seconds")
+        new(SettingKeys.WorkerStaleSeconds, "A worker without a heartbeat for this long is marked Stopped.", 120, 30, 3600, "seconds"),
+        new(SettingKeys.HealthCheckIntervalSeconds, "How often the scheduler checks failures, queue health and process resources.", 60, 10, 3600, "seconds"),
+        new(SettingKeys.HealthFailureThreshold, "Recent failed runs of one task that trigger a health alert.", 3, 2, 100, "failures"),
+        new(SettingKeys.HealthTimeoutThreshold, "Recent timeouts of one task that trigger a health alert.", 2, 1, 100, "timeouts"),
+        new(SettingKeys.HealthQueueBacklogThreshold, "Waiting queue entries that trigger a backlog alert.", 100, 1, 1000000, "entries"),
+        new(SettingKeys.HealthCpuPercentThreshold, "Scheduler process CPU use that triggers a health alert.", 80, 1, 100, "percent"),
+        new(SettingKeys.HealthMemoryMegabytesThreshold, "Scheduler process working-set memory that triggers a health alert.", 1024, 128, 1048576, "MB")
     ];
 
     private static readonly Dictionary<string, SettingDefinition> ByKey = All.ToDictionary(d => d.Key, StringComparer.Ordinal);

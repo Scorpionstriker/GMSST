@@ -655,3 +655,72 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM scheduler.__ef_migrations_history WHERE "MigrationId" = '20261031101500_AddDeveloperRole') THEN
+    ALTER TABLE scheduler.app_user DROP CONSTRAINT ck_app_user_role;
+    UPDATE scheduler.app_user
+    SET role = 'Developer'
+    WHERE user_id = (
+        SELECT user_id
+        FROM scheduler.app_user
+        WHERE role = 'Administrator' AND is_active = TRUE
+        ORDER BY created_at, user_id
+        LIMIT 1
+    );
+    ALTER TABLE scheduler.app_user
+        ADD CONSTRAINT ck_app_user_role CHECK (role IN ('Administrator', 'Viewer', 'Developer'));
+    INSERT INTO scheduler.__ef_migrations_history ("MigrationId", "ProductVersion")
+    VALUES ('20261031101500_AddDeveloperRole', '10.0.14');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM scheduler.__ef_migrations_history WHERE "MigrationId" = '20261102100000_ExecutionTriggersAndNotifications') THEN
+    ALTER TABLE scheduler.task ADD max_executions integer;
+    ALTER TABLE scheduler.task ADD execution_count integer NOT NULL DEFAULT 0;
+    ALTER TABLE scheduler.task DROP CONSTRAINT ck_task_status;
+    ALTER TABLE scheduler.task ADD CONSTRAINT ck_task_status CHECK (status IN ('Active', 'Paused', 'Disabled', 'Completed'));
+    ALTER TABLE scheduler.task ADD CONSTRAINT ck_task_max_executions
+        CHECK (max_executions IS NULL OR (max_executions BETWEEN 1 AND 1000000));
+    ALTER TABLE scheduler.task ADD CONSTRAINT ck_task_execution_count CHECK (execution_count >= 0);
+
+    ALTER TABLE scheduler.task_queue ADD event_name character varying(100);
+    ALTER TABLE scheduler.task_queue ADD event_source character varying(100);
+    ALTER TABLE scheduler.task_queue ADD event_data character varying(65536);
+    ALTER TABLE scheduler.task_queue DROP CONSTRAINT ck_task_queue_trigger_type;
+    ALTER TABLE scheduler.task_queue ADD CONSTRAINT ck_task_queue_trigger_type
+        CHECK (trigger_type IN ('Scheduled', 'Manual', 'Retry', 'Dependency', 'CatchUp', 'Event'));
+    ALTER TABLE scheduler.task_execution DROP CONSTRAINT ck_task_execution_trigger_type;
+    ALTER TABLE scheduler.task_execution ADD CONSTRAINT ck_task_execution_trigger_type
+        CHECK (trigger_type IN ('Scheduled', 'Manual', 'Retry', 'Dependency', 'CatchUp', 'Event'));
+
+    CREATE TABLE scheduler.in_app_notification (
+        notification_id uuid NOT NULL,
+        source character varying(100) NOT NULL,
+        recipient_user_id uuid NOT NULL,
+        title character varying(200) NOT NULL,
+        message character varying(4000) NOT NULL,
+        created_at timestamp with time zone NOT NULL DEFAULT now(),
+        deliver_at timestamp with time zone NOT NULL,
+        read_at timestamp with time zone,
+        cancelled_at timestamp with time zone,
+        CONSTRAINT "PK_in_app_notification" PRIMARY KEY (notification_id),
+        CONSTRAINT fk_notification_recipient FOREIGN KEY (recipient_user_id)
+            REFERENCES scheduler.app_user (user_id) ON DELETE CASCADE
+    );
+    CREATE INDEX ix_notification_inbox ON scheduler.in_app_notification (recipient_user_id, deliver_at)
+        WHERE cancelled_at IS NULL;
+    CREATE INDEX ix_notification_source ON scheduler.in_app_notification (source, deliver_at)
+        WHERE cancelled_at IS NULL;
+    INSERT INTO scheduler.__ef_migrations_history ("MigrationId", "ProductVersion")
+    VALUES ('20261102100000_ExecutionTriggersAndNotifications', '10.0.14');
+    END IF;
+END $EF$;
+COMMIT;

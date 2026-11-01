@@ -17,6 +17,7 @@ public sealed class ScheduledTask : AuditableEntity
     public const int DefaultPriority = 5;
     public const int MaxRetriesLimit = 10;
     public const int MaxTimeoutSeconds = 86_400;
+    public const int MaxExecutionsLimit = 1_000_000;
     public const int DefaultTimeoutSeconds = 300;
     public const int PayloadMaxBytes = 64 * 1024;
     public const string EmptyPayload = "{}";
@@ -39,6 +40,7 @@ public sealed class ScheduledTask : AuditableEntity
         int priority,
         int? maxRetries,
         int timeoutSeconds,
+        int? maxExecutions,
         DateTime nowUtc,
         Guid? userId)
     {
@@ -49,8 +51,15 @@ public sealed class ScheduledTask : AuditableEntity
         Priority = priority;
         MaxRetries = maxRetries;
         TimeoutSeconds = timeoutSeconds;
+        MaxExecutions = maxExecutions;
         Status = ScheduledTaskStatus.Active;
         MarkCreated(nowUtc, userId);
+    }
+
+    public ScheduledTask(string name, string? description, string taskType, string payload, int priority, int? maxRetries,
+        int timeoutSeconds, DateTime nowUtc, Guid? userId)
+        : this(name, description, taskType, payload, priority, maxRetries, timeoutSeconds, null, nowUtc, userId)
+    {
     }
 
     public string Name { get; private set; }
@@ -71,6 +80,12 @@ public sealed class ScheduledTask : AuditableEntity
     public int? MaxRetries { get; private set; }
 
     public int TimeoutSeconds { get; private set; }
+
+    /// <summary>Maximum number of started executions across all trigger types; null means unlimited.</summary>
+    public int? MaxExecutions { get; private set; }
+
+    /// <summary>Number of executions that have started, including retries and manual/event runs.</summary>
+    public int ExecutionCount { get; private set; }
 
     /// <summary>
     /// Stable key of a task the scheduler or a module creates itself, for example "builtin.database-backup" (WP-8h).
@@ -99,6 +114,7 @@ public sealed class ScheduledTask : AuditableEntity
         int priority,
         int? maxRetries,
         int timeoutSeconds,
+        int? maxExecutions,
         DateTime nowUtc,
         Guid? userId)
     {
@@ -109,7 +125,31 @@ public sealed class ScheduledTask : AuditableEntity
         Priority = priority;
         MaxRetries = maxRetries;
         TimeoutSeconds = timeoutSeconds;
+        MaxExecutions = maxExecutions;
+        if (Status == ScheduledTaskStatus.Completed && (maxExecutions is null || ExecutionCount < maxExecutions))
+        {
+            Status = ScheduledTaskStatus.Active;
+        }
+
         MarkUpdated(nowUtc, userId);
+    }
+
+    /// <summary>Reserves one execution slot. Completion is persisted with the execution start atomically.</summary>
+    public bool RecordExecutionStarted(DateTime nowUtc)
+    {
+        if (Status == ScheduledTaskStatus.Completed || MaxExecutions is { } maximum && ExecutionCount >= maximum)
+        {
+            return false;
+        }
+
+        ExecutionCount++;
+        if (MaxExecutions is { } limit && ExecutionCount >= limit)
+        {
+            Status = ScheduledTaskStatus.Completed;
+        }
+
+        MarkUpdated(nowUtc, null);
+        return true;
     }
 
     public void Pause(DateTime nowUtc, Guid? userId) => ChangeStatus(ScheduledTaskStatus.Paused, nowUtc, userId);

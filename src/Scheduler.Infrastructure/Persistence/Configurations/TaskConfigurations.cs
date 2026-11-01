@@ -15,6 +15,8 @@ internal sealed class ScheduledTaskConfiguration : IEntityTypeConfiguration<Sche
             t.HasCheckConstraint("ck_task_priority", "priority BETWEEN 1 AND 10");
             t.HasCheckConstraint("ck_task_max_retries", "max_retries IS NULL OR (max_retries BETWEEN 0 AND 10)");
             t.HasCheckConstraint("ck_task_timeout_seconds", "timeout_seconds > 0");
+            t.HasCheckConstraint("ck_task_max_executions", "max_executions IS NULL OR (max_executions BETWEEN 1 AND 1000000)");
+            t.HasCheckConstraint("ck_task_execution_count", "execution_count >= 0");
         });
         b.HasKey(x => x.Id);
         b.Property(x => x.Id).HasColumnName("task_id").ValueGeneratedNever();
@@ -26,6 +28,8 @@ internal sealed class ScheduledTaskConfiguration : IEntityTypeConfiguration<Sche
         b.Property(x => x.Status).IsEnumText(b, "status", 20);
         b.Property(x => x.MaxRetries).HasColumnName("max_retries");
         b.Property(x => x.TimeoutSeconds).HasColumnName("timeout_seconds").HasDefaultValue(ScheduledTask.DefaultTimeoutSeconds).HasSentinel(0);
+        b.Property(x => x.MaxExecutions).HasColumnName("max_executions");
+        b.Property(x => x.ExecutionCount).HasColumnName("execution_count").HasDefaultValue(0);
         b.Property(x => x.IsDeleted).HasColumnName("is_deleted").HasDefaultValue(false);
         b.Property(x => x.CreatedById).HasColumnName("created_by");
         b.Property(x => x.UpdatedById).HasColumnName("updated_by");

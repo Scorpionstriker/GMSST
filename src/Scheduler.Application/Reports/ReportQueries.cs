@@ -30,7 +30,7 @@ public sealed record PerformanceRow(Guid TaskId, string TaskName, int Runs, doub
 
 public sealed record LoginAuditRow(DateTime AttemptedAtUtc, string Username, bool Succeeded, string? Reason);
 
-public sealed record SecurityEventRow(DateTime LoggedAtUtc, string User, string Action, string Message);
+public sealed record SecurityEventRow(DateTime LoggedAtUtc, string Application, string User, string Action, string Message);
 
 public sealed record DashboardData(
     string? NextRunTaskName,

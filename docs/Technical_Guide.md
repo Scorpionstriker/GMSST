@@ -15,7 +15,7 @@ GSST is a layered, modular monolith that runs on one computer (NFR-07, NFR-09). 
 | Core Scheduling Engine | Scheduler.Application | Use cases with validation, authorisation and logging decorators, cron parser, schedule calculator, retry policy, reports, backup and configuration use cases | Domain, Extensibility |
 | Core Scheduling Engine | Scheduler.Engine | Scheduling loop, worker pool, task executor, recovery, built-in task types | Application, Domain, Extensibility |
 | Data | Scheduler.Infrastructure | EF Core and Npgsql persistence, migrations, queue claiming, logging providers, cache, backup with pg_dump and pg_restore, engine lock | Application, Domain, Extensibility |
-| Extensibility | Scheduler.Extensibility | Public contracts for modules: `ITaskHandler`, `ISchedulerModule`, `ILoggingProvider`, `IAuthenticationProvider`, `ISchedulerClient` and others | Domain |
+| Extensibility | Scheduler.Extensibility | Public contracts for modules: `ITaskHandler`, `ISchedulerModule`, `ILoggingProvider`, `IAuthenticationProvider`, `ISchedulerClient`, `ISchedulerNotifications` and others | Domain |
 | Extensibility | Scheduler.Modules.Security | Login and Security module: local users, PBKDF2 hashing, lockout, roles, self-registration with administrator approval, self-service username and password changes, password recovery with a one-time recovery code (no email needed), Login, Register, Forgot password, Users and Account pages | Extensibility |
 | User interface | Scheduler.Admin | .NET MAUI Blazor Hybrid desktop app and composition root; hosts the engine | everything |
 | Demo apps | DemoApps.InventoryMonitor | Integration method 1: a module inside the scheduler | Extensibility |
@@ -28,7 +28,9 @@ really detect a dependency, so they cannot pass by accident.
 
 Inside a layer the code is organised by feature (`Tasks/`, `Queue/`, `Reports/`, `Backup/` …). Each use case is
 a command or query record with one handler, found by assembly scanning and wrapped in decorators for validation,
-the Administrator role check (`IRequireAdministrator`) and logging. Handlers return `Result` or `Result<T>` with an
+the Administrator role check (`IRequireAdministrator`) and logging. User-initiated module actions and security events
+use `IAuditLog`; entries can identify their originating application or module, go to the scheduler's Security source,
+and appear in the Security and audit report. Handlers return `Result` or `Result<T>` with an
 error kind (Validation, NotFound, Forbidden, Conflict, Failure) and per-field messages instead of throwing.
 
 ## 2. One engine per database
@@ -65,6 +67,9 @@ Because there is only one engine, Run now, pause and resume in the Admin app wak
    latest final runs since the last dependency trigger succeeded.
 8. **Sleep** until the next run or waiting entry is due, at most `MaxPollIntervalSeconds`, at least 0.5 s. A wake
    signal ends the sleep early. Only entries this host can claim count, so a busy pool does not cause a busy loop.
+9. **Monitor health** on the configured interval: recent repeated failures and timeouts, stale worker heartbeats,
+   queue backlog and saturation, and the scheduler process CPU and working set. Threshold alerts are logged and sent
+   as in-app notifications to active Administrators and Developers; CPU or memory alerts do not stop scheduling.
 
 Stopping (window closed, or pause) stops claiming, gives running tasks `ShutdownGraceSeconds`, then cancels them;
 cancelled runs are queued again with the same attempt number. The app waits at most `ShutdownGraceSeconds` + 15 s.
@@ -97,7 +102,7 @@ There are three PostgreSQL databases, all owned by the least-privilege role `gms
 
 | Database | Owner of the schema | Tables |
 |---|---|---|
-| `gmss` | Scheduler (EF Core migrations) | `task`, `schedule`, `task_dependency`, `task_queue`, `task_execution`, `worker_thread`, `error_log`, `execution_log`, `configuration`, `logging_provider`, `app_user`, `login_audit`, `engine_instance` |
+| `gmss` | Scheduler (EF Core migrations) | `task`, `schedule`, `task_dependency`, `task_queue`, `task_execution`, `worker_thread`, `error_log`, `execution_log`, `configuration`, `logging_provider`, `app_user`, `login_audit`, `engine_instance`, `in_app_notification` |
 | `inventory_demo` | Inventory Monitor module | schema `inventory`: `product`, `stock_report` |
 | `maintenance_demo` | Maintenance Agent | `health_check`, `cleanup_run` |
 
@@ -108,6 +113,9 @@ history) and has `error_log` and `execution_log` rows. All times are stored in U
 constraints. `task.system_key` (unique, nullable) marks built-in tasks. `task_queue.is_manual_run` lets a paused
 task's manual run and its retries go ahead. `app_user`, `configuration` and `logging_provider` use the PostgreSQL
 `xmin` column as a concurrency token, so a stale edit is refused with a "changed by someone else" message.
+`task.max_executions` optionally caps started runs across every trigger; `execution_count` increments when the engine
+records a start. Event metadata is stored on the queue entry, separate from the task's configured JSON payload.
+`in_app_notification` stores recipient-specific messages and one-time delivery times.
 
 The full schema as SQL is in `database/schema.sql` (generated with `dotnet ef migrations script --idempotent`).
 Migrations are applied at start-up under an advisory lock, and only after a verified safety backup of `gmss`
@@ -209,7 +217,23 @@ refuses to restore `maintenance_demo` while the agent is running.
 | `IModuleDatabases` | A module's own database connection from a configuration section, using `GMSS_DB_PASSWORD` |
 | `IRestoreGuard` | Refuse a restore while something depends on a database |
 | `IAuditLog` | Write security audit entries that appear in the Security and audit report |
-| `ISchedulerClient` | Create tasks by system key or name, and run them now |
+| `ISchedulerClient` | Create tasks by system key or name, run them now, and trigger them by stable task key with separate event name, source and bounded JSON event data |
+| `ISchedulerNotifications` | Create immediate or one-time UTC notifications, list/cancel a module's future notifications, and show/mark read the signed-in user's inbox |
+
+For event-driven work, a module owns the mapping between its business event and a stable task system key:
+
+```csharp
+await scheduler.TriggerEventAsync(
+    "inventory.stock-reconciliation",
+    "inventory.stock-adjusted",
+    "Inventory Monitor",
+    JsonSerializer.Serialize(new { sku = "A-100", quantity = 18 }),
+    cancellationToken);
+```
+
+The task handler receives the configured task payload through `ITaskContext.Payload` and event-specific data through
+`ITaskContext.EventData`; retries retain the original event metadata. Event data must be a JSON object no larger than
+64 KiB. No event-to-task mapping is added to the scheduler core.
 
 ## 7. Configuration
 
@@ -233,6 +257,12 @@ stored, and are cached (FR-36, FR-37). Defaults are seeded at first start and ne
 | RunAllMisfireCap | 10 | 1–1000 | |
 | ShutdownGraceSeconds | 30 | 0–600 | |
 | WorkerStaleSeconds | 120 | 30–3600 | |
+| HealthCheckIntervalSeconds | 60 | 10–3600 | |
+| HealthFailureThreshold | 3 | 2–100 | |
+| HealthTimeoutThreshold | 2 | 1–100 | |
+| HealthQueueBacklogThreshold | 100 | 1–1,000,000 | |
+| HealthCpuPercentThreshold | 80 | 1–100 | |
+| HealthMemoryMegabytesThreshold | 1024 | 128–1,048,576 | |
 
 Computer-specific settings (folders, login bypass, agent address) are in the user settings file, described in the
 installation guide. The embedded `appsettings.json` holds the `Database`, `Inventory`, `MaintenanceAgent` and

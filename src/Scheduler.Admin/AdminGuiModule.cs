@@ -22,6 +22,7 @@ public sealed class AdminGuiModule : ISchedulerModule
     public IReadOnlyList<ModuleMenuItem> MenuItems { get; } =
     [
         new("Dashboard", "/", "Overview"),
+        new("Notifications", "/notifications", "Account"),
         new("Tasks", "/tasks", "Scheduling"),
         new("Queue", "/queue", "Scheduling"),
         new("Execution history", "/executions", "Monitoring"),

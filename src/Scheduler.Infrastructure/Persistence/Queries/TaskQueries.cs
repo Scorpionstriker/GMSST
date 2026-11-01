@@ -62,7 +62,9 @@ internal sealed class TaskQueries(IDbContextFactory<SchedulerDbContext> contextF
                 r.Schedule == null || !r.Schedule.IsActive ? null : r.Schedule.NextRunTimeUtc,
                 r.Last == null ? null : r.Last.Status,
                 r.Last == null ? null : r.Last.StartTimeUtc,
-                r.Task.SystemKey != null))
+                r.Task.SystemKey != null,
+                r.Task.ExecutionCount,
+                r.Task.MaxExecutions))
             .ToListAsync(cancellationToken);
 
         return new PagedResult<TaskListItem>(items, total, page.SafePage, page.SafePageSize);
