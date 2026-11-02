@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Scheduler.Domain.Entities;
 using Scheduler.Domain.Enums;
 using Scheduler.Extensibility.Contracts;
 using Scheduler.Modules.Security;
@@ -144,6 +145,32 @@ public sealed class SecurityTests(TestDatabase database) : IClassFixture<TestDat
 
         var fresh = (await users.ListAsync()).Single(u => u.Username == "stale");
         Assert.True((await users.UpdateUserAsync(fresh.Id, UserRole.Administrator, true, fresh.Version)).Succeeded);
+    }
+
+    [SkippableFact]
+    public async Task DeletingUser_RemovesNotificationsAndUnlinksLoginAudit()
+    {
+        RequiresDatabase.Check();
+        var services = CreateServices();
+        await EnsureDeveloperAsync(services);
+        await SignInAsDeveloperAsync(services);
+        var users = services.GetRequiredService<UserManagement>();
+        var username = "delete-" + Guid.NewGuid().ToString("N")[..12];
+        Assert.True((await users.CreateUserAsync(username, Password, Password, UserRole.Viewer)).Succeeded);
+        var target = (await users.ListAsync()).Single(user => user.Username == username);
+        var store = services.GetRequiredService<IUserAccountStore>();
+        await store.AddLoginAuditAsync(new LoginAuditRecord(target.Id, username, true, null, DateTime.UtcNow));
+        var notificationId = await services.GetRequiredService<ISchedulerNotifications>()
+            .ScheduleAsync("security-test", target.Id, "Test notification", "This notification should be removed.");
+
+        var result = await users.DeleteUserAsync(target.Id, target.Version);
+
+        Assert.True(result.Succeeded);
+        await using var db = database.CreateContext();
+        Assert.False(await db.AppUsers.AnyAsync(user => user.Id == target.Id));
+        var audit = await db.LoginAudits.SingleAsync(entry => entry.UsernameAttempted == username);
+        Assert.Null(audit.UserId);
+        Assert.False(await db.Set<InAppNotification>().AnyAsync(item => item.Id == notificationId));
     }
 
     private ServiceProvider CreateServices() =>

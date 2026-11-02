@@ -314,6 +314,54 @@ public sealed class UserManagement(
         return UserActionResult.Ok;
     }
 
+    public async Task<UserActionResult> DeleteUserAsync(Guid userId, uint? expectedVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!session.IsAdministrator)
+        {
+            return Forbidden;
+        }
+
+        var user = await users.FindByIdAsync(userId, cancellationToken);
+        if (user is null)
+        {
+            return UserActionResult.Fail("The user no longer exists.");
+        }
+
+        if (expectedVersion is { } seen && seen != user.Version)
+        {
+            return Changed;
+        }
+
+        if (user.Role == UserRole.Developer && !session.IsDeveloper)
+        {
+            return DeveloperOnly;
+        }
+
+        if (user.Id == session.UserId)
+        {
+            return UserActionResult.Fail("You cannot delete your own account.");
+        }
+
+        if (user is { Role: UserRole.Developer, IsActive: true }
+            && (await users.ListAsync(cancellationToken)).Count(u => u is { Role: UserRole.Developer, IsActive: true }) <= 1)
+        {
+            return UserActionResult.Fail("At least one active Developer is required.");
+        }
+
+        try
+        {
+            await users.DeleteAsync(user, cancellationToken);
+        }
+        catch (UserAccountConflictException)
+        {
+            return Changed;
+        }
+
+        await audit.RecordAsync("UserDeleted", $"{Actor} deleted user '{user.Username}'.", "Login and Security", cancellationToken);
+        return UserActionResult.Ok;
+    }
+
     public async Task<UserActionResult> ResetPasswordAsync(Guid userId, string password, string confirmation, uint? expectedVersion = null,
         CancellationToken cancellationToken = default)
     {

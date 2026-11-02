@@ -79,6 +79,16 @@ internal sealed class UserAccountStore(IDbContextFactory<SchedulerDbContext> con
         await Save(db, cancellationToken);
     }
 
+    public async Task DeleteAsync(UserAccount user, CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await db.AppUsers.FirstOrDefaultAsync(u => u.Id == user.Id, cancellationToken)
+                     ?? throw new UserAccountConflictException("The user no longer exists.");
+        db.Entry(entity).Property(e => e.Version).OriginalValue = user.Version;
+        db.AppUsers.Remove(entity);
+        await Save(db, cancellationToken);
+    }
+
     public async Task AddLoginAuditAsync(LoginAuditRecord record, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);

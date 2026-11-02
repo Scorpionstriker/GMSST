@@ -593,6 +593,30 @@ public sealed class InMemoryUserAccountStore : IUserAccountStore
         return Task.CompletedTask;
     }
 
+    public Task DeleteAsync(UserAccount user, CancellationToken cancellationToken = default)
+    {
+        Locked(() =>
+        {
+            var index = _users.FindIndex(u => u.Id == user.Id);
+            if (index < 0 || _users[index].Version != user.Version)
+            {
+                throw new UserAccountConflictException("The user was changed by someone else. Open it again and repeat your change.");
+            }
+
+            _users.RemoveAt(index);
+            for (var i = 0; i < Audit.Count; i++)
+            {
+                if (Audit[i].UserId == user.Id)
+                {
+                    Audit[i] = Audit[i] with { UserId = null };
+                }
+            }
+
+            return 0;
+        });
+        return Task.CompletedTask;
+    }
+
     public Task AddLoginAuditAsync(LoginAuditRecord record, CancellationToken cancellationToken = default)
     {
         Locked(() => { Audit.Add(record); return 0; });
