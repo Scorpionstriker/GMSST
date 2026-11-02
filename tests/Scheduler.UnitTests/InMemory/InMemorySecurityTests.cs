@@ -155,6 +155,61 @@ public class InMemorySecurityTests
     }
 
     [Fact]
+    public async Task DeleteUser_RemovesAccountAndUnlinksRetainedLoginAudit()
+    {
+        await using var host = await SignedInAdministratorAsync();
+        var users = host.Get<UserManagement>();
+        Assert.True((await users.CreateUserAsync("delete-me", Password, Password, UserRole.Viewer)).Succeeded);
+        var target = (await users.ListAsync()).Single(user => user.Username == "delete-me");
+        await host.Users.AddLoginAuditAsync(new LoginAuditRecord(target.Id, target.Username, true, null, DateTime.UtcNow));
+
+        var result = await users.DeleteUserAsync(target.Id, target.Version);
+
+        Assert.True(result.Succeeded);
+        Assert.Null(await host.Users.FindByIdAsync(target.Id));
+        Assert.Contains(host.Users.Audit,
+            record => record.UsernameAttempted == target.Username && record.UserId is null);
+        Assert.Contains(host.Logger.Entries,
+            entry => entry.Source == LogSources.Security && entry.Properties?["action"] as string == "UserDeleted");
+    }
+
+    [Fact]
+    public async Task DeleteUser_RefusesSelfDeletionAndStaleVersions()
+    {
+        await using var host = await SignedInAdministratorAsync();
+        var users = host.Get<UserManagement>();
+        var self = (await users.ListAsync()).Single(user => user.Username == "admin");
+        Assert.Equal("You cannot delete your own account.", (await users.DeleteUserAsync(self.Id)).Error);
+
+        Assert.True((await users.CreateUserAsync("stale-delete", Password, Password, UserRole.Viewer)).Succeeded);
+        var opened = (await users.ListAsync()).Single(user => user.Username == "stale-delete");
+        await host.Get<IAuthenticationProvider>().SignInAsync("stale-delete", "wrong password 1");
+        await host.Get<IAuthenticationProvider>().SignInAsync("admin", Password);
+
+        var result = await users.DeleteUserAsync(opened.Id, opened.Version);
+
+        Assert.False(result.Succeeded);
+        Assert.StartsWith("Someone else changed this user", result.Error);
+        Assert.NotNull(await host.Users.FindByIdAsync(opened.Id));
+    }
+
+    [Fact]
+    public async Task Administrator_CannotDeleteDeveloperAccount()
+    {
+        await using var host = await SignedInAdministratorAsync();
+        var users = host.Get<UserManagement>();
+        Assert.True((await users.CreateUserAsync("admin-user", Password, Password, UserRole.Administrator)).Succeeded);
+        var developer = (await users.ListAsync()).Single(user => user.Role == UserRole.Developer);
+        Assert.True((await host.Get<IAuthenticationProvider>().SignInAsync("admin-user", Password)).Succeeded);
+
+        var result = await users.DeleteUserAsync(developer.Id, developer.Version);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Only Developers can manage Developer accounts.", result.Error);
+        Assert.NotNull(await host.Users.FindByIdAsync(developer.Id));
+    }
+
+    [Fact]
     public async Task EditingAUserThatChangedSinceItWasOpened_IsRefused()
     {
         await using var host = await SignedInAdministratorAsync();

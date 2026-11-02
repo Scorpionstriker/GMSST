@@ -19,6 +19,7 @@ public interface IUserAccountStore
 
     Task CreateAsync(UserAccount user, CancellationToken cancellationToken = default);
     Task UpdateAsync(UserAccount user, CancellationToken cancellationToken = default);
+    Task DeleteAsync(UserAccount user, CancellationToken cancellationToken = default);
     Task AddLoginAuditAsync(LoginAuditRecord record, CancellationToken cancellationToken = default);
 }
 

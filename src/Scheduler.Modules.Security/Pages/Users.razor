@@ -163,6 +163,10 @@ else
                             @if (Session.IsDeveloper || user.Role != UserRole.Developer)
                             {
                                 <button class="btn btn-small" @onclick="() => StartEdit(user)">Edit</button>
+                                @if (user.Id != Session.UserId)
+                                {
+                                    <button class="btn btn-small btn-danger" @onclick="() => StartDelete(user)">Delete</button>
+                                }
                             }
                         </td>
                     </tr>
@@ -172,19 +176,40 @@ else
     </div>
 }
 
+@if (Session.IsAdministrator && _deleting is not null)
+{
+    <div class="banner banner-warning" role="alert">
+        <strong>Permanently delete @_deleting.Username?</strong>
+        <p>This cannot be undone. Their notifications will be removed; login audit history and task/schedule attribution will be retained without the account link.</p>
+        <div class="field">
+            <label for="delete-username">Type @_deleting.Username to confirm</label>
+            <input id="delete-username" @bind="_deleteConfirmation" autocomplete="off" />
+        </div>
+        <ErrorBanner Result="_result" />
+        <div class="actions">
+            <button class="btn btn-danger" disabled="@(!CanConfirmDelete)" @onclick="DeleteAsync">Permanently delete user</button>
+            <button class="btn" @onclick="CancelDelete">Cancel</button>
+        </div>
+    </div>
+}
+
 @code {
     private IReadOnlyList<UserAccount> _users = [];
     private UserAccount? _editing;
+    private UserAccount? _deleting;
     private bool _adding;
     private string _username = "";
     private string _password = "";
     private string _confirmation = "";
+    private string _deleteConfirmation = "";
     private UserRole _role = UserRole.Viewer;
     private bool _active = true;
     private bool _confirmDeactivate;
     private UserActionResult? _result;
     private string? _notice;
     private string? _newCode;
+    private bool CanConfirmDelete => _deleting is { } user
+        && string.Equals(_deleteConfirmation.Trim(), user.Username, StringComparison.OrdinalIgnoreCase);
 
     // A registered account has never been active, so it has never signed in.
     private static bool IsWaiting(UserAccount user) => !user.IsActive && user.LastLoginAtUtc is null;
@@ -213,13 +238,28 @@ else
         _active = user.IsActive;
     }
 
+    private void StartDelete(UserAccount user)
+    {
+        Clear();
+        _deleting = user;
+    }
+
     private void Cancel() => Clear();
+
+    private void CancelDelete()
+    {
+        _deleting = null;
+        _deleteConfirmation = "";
+        _result = null;
+    }
 
     private void Clear()
     {
         _adding = false;
         _editing = null;
+        _deleting = null;
         _username = _password = _confirmation = "";
+        _deleteConfirmation = "";
         _role = UserRole.Viewer;
         _confirmDeactivate = false;
         _result = null;
@@ -274,6 +314,20 @@ else
             var name = _editing.Username;
             Clear();
             _notice = $"The password of {name} was reset.";
+            await ReloadAsync();
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        var user = _deleting!;
+        _result = await Accounts.DeleteUserAsync(user.Id, user.Version);
+        if (_result.Succeeded)
+        {
+            _deleting = null;
+            _deleteConfirmation = "";
+            _result = null;
+            _notice = $"User {user.Username} was permanently deleted.";
             await ReloadAsync();
         }
     }

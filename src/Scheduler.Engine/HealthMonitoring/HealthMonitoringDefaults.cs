@@ -24,6 +24,8 @@ internal sealed class EmptyUserAccountStore : IUserAccountStore
         throw new NotSupportedException("No user account store is configured.");
     public Task UpdateAsync(UserAccount user, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("No user account store is configured.");
+    public Task DeleteAsync(UserAccount user, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("No user account store is configured.");
     public Task AddLoginAuditAsync(LoginAuditRecord record, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("No user account store is configured.");
 }
