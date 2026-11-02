@@ -38,7 +38,7 @@ implement their own scheduling policies and algorithms, and to integrate with ot
 What the Project utilizes: 
 Three User Roles: Developer (Super Admin), Admin and Viewer.
 The Scheduler and two demos each use there own database which is three databases in total.
-Mdodules used : Monitoring agemt and inventory Managment Demon apllications , Login security module , UI module , Extensibility and core Scheduling Engine Module.
+Mdodules used : Monitoring agent and inventory Managment Demon apllications , Login security module , UI module , Extensibility and core Scheduling Engine Module.
 Readme Files which serve as a guide for developers to understand the project and its features and functionality, and to provide instructions for implementing the
 system scheduler and its components.
 Locally hosted
