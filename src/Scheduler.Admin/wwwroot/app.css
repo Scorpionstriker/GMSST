@@ -160,6 +160,8 @@ pre {
 .stat-value.small { font-size: 1rem; }
 .toolbar { display: flex; gap: .6rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: .75rem; }
 .toolbar .field { margin-bottom: 0; }
+.user-filters .field { flex: 1 1 12rem; }
+.user-filters .field input, .user-filters .field select { width: 100%; }
 .actions { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-top: .5rem; }
 .row-actions { white-space: nowrap; text-align: right; }
 .row-actions .btn { margin-left: .25rem; }

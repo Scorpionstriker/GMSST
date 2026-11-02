@@ -126,13 +126,47 @@ else
         </div>
     }
 
-    <div class="card">
+    var filteredUsers = FilteredUsers;
+    <div class="toolbar user-filters" role="search">
+        <div class="field">
+            <label for="user-search">Search username</label>
+            <input id="user-search" type="search" @bind="_userSearch" @bind:event="oninput" placeholder="Enter a username" />
+        </div>
+        <div class="field">
+            <label for="user-role-filter">Role</label>
+            <select id="user-role-filter" @bind="_userRoleFilter">
+                <option value="">All roles</option>
+                @foreach (var role in Enum.GetValues<UserRole>())
+                {
+                    <option value="@role">@role</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label for="user-status-filter">Status</label>
+            <select id="user-status-filter" @bind="_userStatusFilter">
+                <option value="@UserStatusFilter.All">All statuses</option>
+                <option value="@UserStatusFilter.Waiting">Waiting for approval</option>
+                <option value="@UserStatusFilter.Active">Active</option>
+                <option value="@UserStatusFilter.Inactive">Inactive</option>
+                <option value="@UserStatusFilter.Locked">Locked</option>
+            </select>
+        </div>
+        <button class="btn" type="button" disabled="@(!HasUserFilters)" @onclick="ClearUserFilters">Clear filters</button>
+    </div>
+
+    <div class="card table-wrap">
+        <p class="hint" role="status">Showing @filteredUsers.Count of @_users.Count users</p>
         <table class="table">
             <thead>
                 <tr><th>Username</th><th>Role</th><th>Status</th><th>Last sign-in</th><th></th></tr>
             </thead>
             <tbody>
-                @foreach (var user in _users)
+                @if (filteredUsers.Count == 0)
+                {
+                    <tr><td colspan="5" class="muted">@(_users.Count == 0 ? "No users found." : "No users match these filters.")</td></tr>
+                }
+                @foreach (var user in filteredUsers)
                 {
                     <tr>
                         <td>@user.Username @(user.Id == Session.UserId ? "(you)" : "")</td>
@@ -146,7 +180,7 @@ else
                             {
                                 <span class="badge badge-muted">Inactive</span>
                             }
-                            else if (user.LockoutEndUtc > DateTime.UtcNow)
+                            else if (IsLocked(user))
                             {
                                 @* WP-4b: sign-in only says "Invalid username or password.", so administrators see lockouts here. *@
                                 <span class="badge badge-warning" title="Locked after too many failed sign-ins. Saving the user as active, or resetting the password, unlocks it.">
@@ -202,7 +236,10 @@ else
     private string _password = "";
     private string _confirmation = "";
     private string _deleteConfirmation = "";
+    private string _userSearch = "";
+    private string _userRoleFilter = "";
     private UserRole _role = UserRole.Viewer;
+    private UserStatusFilter _userStatusFilter;
     private bool _active = true;
     private bool _confirmDeactivate;
     private UserActionResult? _result;
@@ -210,9 +247,32 @@ else
     private string? _newCode;
     private bool CanConfirmDelete => _deleting is { } user
         && string.Equals(_deleteConfirmation.Trim(), user.Username, StringComparison.OrdinalIgnoreCase);
+    private bool HasUserFilters => !string.IsNullOrWhiteSpace(_userSearch)
+        || !string.IsNullOrEmpty(_userRoleFilter)
+        || _userStatusFilter != UserStatusFilter.All;
+    private IReadOnlyList<UserAccount> FilteredUsers => _users.Where(user =>
+        (string.IsNullOrWhiteSpace(_userSearch)
+            || user.Username.Contains(_userSearch.Trim(), StringComparison.OrdinalIgnoreCase))
+        && (string.IsNullOrEmpty(_userRoleFilter) || user.Role.ToString() == _userRoleFilter)
+        && (_userStatusFilter == UserStatusFilter.All || GetStatus(user) == _userStatusFilter)).ToArray();
+
+    private enum UserStatusFilter { All, Waiting, Active, Inactive, Locked }
 
     // A registered account has never been active, so it has never signed in.
     private static bool IsWaiting(UserAccount user) => !user.IsActive && user.LastLoginAtUtc is null;
+    private static bool IsLocked(UserAccount user) => user.LockoutEndUtc > DateTime.UtcNow;
+
+    private static UserStatusFilter GetStatus(UserAccount user) => IsWaiting(user) ? UserStatusFilter.Waiting
+        : !user.IsActive ? UserStatusFilter.Inactive
+        : IsLocked(user) ? UserStatusFilter.Locked
+        : UserStatusFilter.Active;
+
+    private void ClearUserFilters()
+    {
+        _userSearch = "";
+        _userRoleFilter = "";
+        _userStatusFilter = UserStatusFilter.All;
+    }
 
     protected override async Task OnInitializedAsync()
     {
